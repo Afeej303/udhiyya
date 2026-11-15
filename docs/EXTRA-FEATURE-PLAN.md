@@ -73,7 +73,7 @@ Decision values: `Selected`, `Optional`, `Rejected`. Priority: P1 best value, P2
 
 | Feature | Stage (Building / V0 / V1 / Awaiting V2 / V2 passed / Flag on) | Flag state | Evidence |
 |---|---|---|---|
-| EF-01 | Backlog | off | `docs/VERIFICATION/EF-01.md` |
-| EF-02 | Backlog | off | `docs/VERIFICATION/EF-02.md` |
+| EF-01 | Awaiting Review (V0+V1 passed) | off | `docs/VERIFICATION/EF-01.md` |
+| EF-02 | Awaiting V2 | off | `docs/VERIFICATION/EF-02.md` |
 
 Limit: 2 features in `Awaiting V2`.
