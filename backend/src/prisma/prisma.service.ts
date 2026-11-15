@@ -49,7 +49,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     try {
       await this.$queryRaw`SELECT 1`;
       return true;
-    } catch {
+    } catch (error) {
+      this.logger.error('Database health check failed:', error);
       return false;
     }
   }
