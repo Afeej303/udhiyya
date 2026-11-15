@@ -21,8 +21,8 @@ export const isSupabaseConfigured =
 export const isMockMode =
   import.meta.env.VITE_USE_MOCK_API === "true" || !isSupabaseConfigured;
 
-// Provider selection: 'supabase' (default active) or 'nestjs' (JWT mode ready for cutover)
-export const AUTH_PROVIDER = (import.meta.env.VITE_AUTH_PROVIDER || "supabase").toLowerCase();
+// Provider selection: 'nestjs' (default active) or 'supabase'
+export const AUTH_PROVIDER = (import.meta.env.VITE_AUTH_PROVIDER || "nestjs").toLowerCase();
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
@@ -124,12 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // ignore
       }
     }
-    return {
-      id: "usr_super_admin",
-      email: "admin@platform.qurbanios.internal",
-      role: "super_admin",
-      name: "Platform Owner",
-    };
+    return null;
   });
   const [loading, setLoading] = useState(false);
 
