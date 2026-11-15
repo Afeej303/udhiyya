@@ -1,18 +1,19 @@
 /**
- * EF-04: Operational Intelligence – Service
- * Owned by M3. Lives in enhancements/ and is mounted via M2's extension hook.
+ * EF-04: Operational Intelligence – Service Layer
+ * Owned by M3. Loaded via M2's flag-guarded extension hook.
  * Flag: FEATURE_EF_04 (default off)
  *
- * Provides operational bottleneck detection:
- * 1. Department status: slaughter, processing, distribution progress.
- * 2. Issue detection: stalls, workload imbalance, overdue tasks, SLA breaches.
+ * Capabilities:
+ * 1. Department status aggregation across slaughter, processing, and distribution.
+ * 2. Operational bottleneck detection: overdue tasks, stalled departments,
+ *    workload imbalance, and schedule (SLA) delays.
  *
  * Data source: Prisma-like interface so the service can be unit tested
  * without a live database. The controller injects the real Prisma client.
  */
 
 // ---------------------------------------------------------------------------
-// Domain & DTO Interfaces
+// Types & Interfaces
 // ---------------------------------------------------------------------------
 
 export interface DepartmentStatus {
@@ -22,6 +23,7 @@ export interface DepartmentStatus {
   overdueTasks: number;
   volunteers: number;
   expectedProgress: number; // 0 - 100
+  actualProgress: number;   // 0 - 100
 }
 
 export interface OperationalStatusResult {
@@ -29,7 +31,7 @@ export interface OperationalStatusResult {
   programmeTitle: string;
   generatedAt: string;
   departments: DepartmentStatus[];
-  slaughterProgress: number; // percentage
+  slaughterProgress: number;    // percentage
   processingCompletion: number; // percentage
   packagesDistributed: number;
   totalIssues: number;
@@ -97,10 +99,15 @@ export class OperationalIntelligenceService {
     const tasks = await this.prisma.task.findMany({ where: { programmeId } });
     const distributions = await this.prisma.distribution.findMany({ where: { programmeId } });
 
-    const departmentStatuses = departments.map((dept: any) => {
+    const now = new Date();
+
+    const departmentStatuses: DepartmentStatus[] = departments.map((dept: any) => {
       const deptTasks = tasks.filter((t: any) => t.departmentId === dept.id);
       const completed = deptTasks.filter((t: any) => t.status === 'completed').length;
-      const overdue = deptTasks.filter((t: any) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'completed').length;
+      const overdue = deptTasks.filter((t: any) =>
+        t.dueDate && new Date(t.dueDate) < now && t.status !== 'completed',
+      ).length;
+      const actualProgress = deptTasks.length > 0 ? Math.round((completed / deptTasks.length) * 100) : 0;
       return {
         name: dept.name,
         totalTasks: deptTasks.length,
@@ -108,6 +115,7 @@ export class OperationalIntelligenceService {
         overdueTasks: overdue,
         volunteers: dept.volunteers || 0,
         expectedProgress: dept.expectedProgress || 100,
+        actualProgress,
       };
     });
 
@@ -116,16 +124,22 @@ export class OperationalIntelligenceService {
 
     const packagesDistributed = distributions.filter((d: any) => d.status === 'delivered').length;
 
+    const issues = await this.getIssues(programmeId);
+
     return {
       programmeId,
       programmeTitle: programme.title || `Programme ${programmeId}`,
       generatedAt: new Date().toISOString(),
       departments: departmentStatuses,
-      slaughterProgress: slaughter ? Math.round((slaughter.completedTasks / Math.max(slaughter.totalTasks, 1)) * 100) : 0,
-      processingCompletion: processing ? Math.round((processing.completedTasks / Math.max(processing.totalTasks, 1)) * 100) : 0,
+      slaughterProgress: slaughter
+        ? Math.round((slaughter.completedTasks / Math.max(slaughter.totalTasks, 1)) * 100)
+        : 0,
+      processingCompletion: processing
+        ? Math.round((processing.completedTasks / Math.max(processing.totalTasks, 1)) * 100)
+        : 0,
       packagesDistributed,
-      totalIssues: 0, // populated by getIssues
-      highSeverityIssues: 0,
+      totalIssues: issues.length,
+      highSeverityIssues: issues.filter((i: OperationalIssue) => i.severity === 'high').length,
     };
   }
 
@@ -147,15 +161,22 @@ export class OperationalIntelligenceService {
     // 1. Overdue tasks per department
     for (const dept of departments) {
       const deptTasks = tasks.filter((t: any) => t.departmentId === dept.id);
-      const overdue = deptTasks.filter((t: any) => t.dueDate && new Date(t.dueDate) < now && t.status !== 'completed');
+      const overdue = deptTasks.filter((t: any) =>
+        t.dueDate && new Date(t.dueDate) < now && t.status !== 'completed',
+      );
       if (overdue.length > 0) {
+        const oldestDays = Math.max(
+          ...overdue.map((t: any) =>
+            Math.floor((now.getTime() - new Date(t.dueDate).getTime()) / 86400000),
+          ),
+        );
         issues.push({
           id: `overdue-${dept.id}`,
           department: dept.name,
           type: 'overdue',
           severity: overdue.length >= 5 ? 'high' : overdue.length >= 2 ? 'medium' : 'low',
           title: `${overdue.length} overdue task(s) in ${dept.name}`,
-          detail: `Oldest overdue task is ${Math.max(...overdue.map((t: any) => Math.floor((now.getTime() - new Date(t.dueDate).getTime()) / 86400000)))} day(s) past due.`,
+          detail: `Oldest overdue task is ${oldestDays} day(s) past due.`,
           metric: overdue.length,
           threshold: 1,
           detectedAt: now.toISOString(),
@@ -163,7 +184,7 @@ export class OperationalIntelligenceService {
       }
     }
 
-    // 2. Stalled department (no progress but tasks exist)
+    // 2. Stalled department (tasks exist but none completed)
     for (const dept of departments) {
       const deptTasks = tasks.filter((t: any) => t.departmentId === dept.id);
       const completed = deptTasks.filter((t: any) => t.status === 'completed').length;
@@ -182,7 +203,7 @@ export class OperationalIntelligenceService {
       }
     }
 
-    // 3. Workload imbalance (volunteers per task)
+    // 3. Workload imbalance (tasks per volunteer vs average)
     const totalTasks = tasks.length;
     const totalVolunteers = departments.reduce((sum: number, d: any) => sum + (d.volunteers || 0), 0);
     if (totalTasks > 0 && totalVolunteers > 0) {

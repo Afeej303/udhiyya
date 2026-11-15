@@ -27,16 +27,29 @@ import { OperationalIntelligenceService } from './operational-intelligence.servi
 
 /**
  * Strict Admin Guard for EF-04.
+ * Fails closed: Requires upstream verification (req.user attached by M2's JwtAuthGuard)
+ * AND verifies explicit admin role claim.
  */
 @Injectable()
 export class ExtensionAdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest();
-    if (!req.user) throw new UnauthorizedException('Authentication required');
 
+    // 1. Verify upstream authentication attached user identity
+    if (!req.user) {
+      throw new UnauthorizedException(
+        'Authentication required: Missing authenticated user context. Ensure M2 JwtAuthGuard is loaded upstream.',
+      );
+    }
+
+    // 2. Enforce explicit Admin role
     const role = req.user.role ? String(req.user.role).toUpperCase() : '';
-    const roles = Array.isArray(req.user.roles) ? req.user.roles.map((r: any) => String(r).toUpperCase()) : [];
-    const roleSlugs = Array.isArray(req.user.roleSlugs) ? req.user.roleSlugs.map((r: any) => String(r).toUpperCase()) : [];
+    const roles = Array.isArray(req.user.roles)
+      ? req.user.roles.map((r: any) => String(r).toUpperCase())
+      : [];
+    const roleSlugs = Array.isArray(req.user.roleSlugs)
+      ? req.user.roleSlugs.map((r: any) => String(r).toUpperCase())
+      : [];
 
     const isAdmin =
       role === 'ADMIN' ||
@@ -47,7 +60,12 @@ export class ExtensionAdminGuard implements CanActivate {
       roleSlugs.includes('SUPERADMIN') ||
       (req.user.role && String(req.user.role).toLowerCase() === 'admin');
 
-    if (!isAdmin) throw new ForbiddenException('Admin role required for operational intelligence.');
+    if (!isAdmin) {
+      throw new ForbiddenException(
+        'Admin role required for operational intelligence operations.',
+      );
+    }
+
     return true;
   }
 }
@@ -56,39 +74,116 @@ export class ExtensionAdminGuard implements CanActivate {
 @UseGuards(ExtensionAdminGuard)
 export class OperationalIntelligenceController {
   private readonly service: OperationalIntelligenceService;
+
   constructor(service?: OperationalIntelligenceService) {
     this.service = service || new OperationalIntelligenceService();
   }
 
+  /**
+   * Helper checking feature flag state.
+   */
   private isFeatureEnabled(): boolean {
     return process.env.FEATURE_EF_04 === 'on';
   }
 
+  /**
+   * GET /api/ext/EF-04/status?programmeId=:id
+   * Operational summary: slaughter progress, processing completion, packages distributed.
+   */
   @Get('status')
-  async getStatus(@Query('programmeId') programmeIdStr: string, @Res() res: Response) {
-    if (!this.isFeatureEnabled()) return res.status(HttpStatus.FORBIDDEN).json({ error: 'Feature disabled' });
+  async getStatus(
+    @Query('programmeId') programmeIdStr: string,
+    @Res() res: Response,
+  ) {
+    if (!this.isFeatureEnabled()) {
+      return res.status(HttpStatus.FORBIDDEN).json({
+        statusCode: HttpStatus.FORBIDDEN,
+        error: 'Forbidden',
+        message: 'Feature EF-04 (Operational Intelligence) is currently disabled.',
+      });
+    }
+
     const programmeId = Number(programmeIdStr);
-    if (isNaN(programmeId)) return res.status(HttpStatus.BAD_REQUEST).json({ error: 'Invalid ID' });
-    
+    if (!programmeIdStr || isNaN(programmeId) || programmeId <= 0) {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        statusCode: HttpStatus.BAD_REQUEST,
+        error: 'Bad Request',
+        message: 'A valid numeric programmeId is required.',
+      });
+    }
+
     try {
       const status = await this.service.getStatus(programmeId);
       return res.status(HttpStatus.OK).json(status);
-    } catch (e: any) {
-      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: e.message });
+    } catch (err: any) {
+      if (
+        err.message &&
+        (err.message.includes('not found') || err.message.startsWith('NOT_FOUND:'))
+      ) {
+        return res.status(HttpStatus.NOT_FOUND).json({
+          statusCode: HttpStatus.NOT_FOUND,
+          error: 'Not Found',
+          message: err.message,
+        });
+      }
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+        error: 'Internal Server Error',
+        message: err.message || 'Failed to generate operational status.',
+      });
     }
   }
 
+  /**
+   * GET /api/ext/EF-04/issues?programmeId=:id
+   * Detected bottlenecks, overdue tasks, and department-level delay flags.
+   */
   @Get('issues')
-  async getIssues(@Query('programmeId') programmeIdStr: string, @Res() res: Response) {
-    if (!this.isFeatureEnabled()) return res.status(HttpStatus.FORBIDDEN).json({ error: 'Feature disabled' });
+  async getIssues(
+    @Query('programmeId') programmeIdStr: string,
+    @Res() res: Response,
+  ) {
+    if (!this.isFeatureEnabled()) {
+      return res.status(HttpStatus.FORBIDDEN).json({
+        statusCode: HttpStatus.FORBIDDEN,
+        error: 'Forbidden',
+        message: 'Feature EF-04 (Operational Intelligence) is currently disabled.',
+      });
+    }
+
     const programmeId = Number(programmeIdStr);
-    if (isNaN(programmeId)) return res.status(HttpStatus.BAD_REQUEST).json({ error: 'Invalid ID' });
+    if (!programmeIdStr || isNaN(programmeId) || programmeId <= 0) {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        statusCode: HttpStatus.BAD_REQUEST,
+        error: 'Bad Request',
+        message: 'A valid numeric programmeId is required.',
+      });
+    }
 
     try {
       const issues = await this.service.getIssues(programmeId);
-      return res.status(HttpStatus.OK).json({ issues });
-    } catch (e: any) {
-      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: e.message });
+      return res.status(HttpStatus.OK).json({
+        programmeId,
+        totalIssues: issues.length,
+        highSeverityIssues: issues.filter((i: any) => i.severity === 'high').length,
+        issues,
+      });
+    } catch (err: any) {
+      if (
+        err.message &&
+        (err.message.includes('not found') || err.message.startsWith('NOT_FOUND:'))
+      ) {
+        return res.status(HttpStatus.NOT_FOUND).json({
+          statusCode: HttpStatus.NOT_FOUND,
+          error: 'Not Found',
+          message: err.message,
+        });
+      }
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+        error: 'Internal Server Error',
+        message: err.message || 'Failed to detect operational issues.',
+      });
     }
   }
 }
