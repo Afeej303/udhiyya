@@ -328,6 +328,25 @@ export class AnimalsService {
   async release(scope: Scope, id: string, actorId: string) {
     await this.serial(async (tx) => {
       await this.registrations.getProgramme(tx, scope, false);
+      const allocation = await tx.shareAllocation.findFirst({
+        where: { id, programmeId: scope.programmeId },
+      });
+      if (!allocation)
+        throw new NotFoundException('Share allocation not found');
+      if (
+        await tx.schedule.findFirst({
+          where: {
+            programmeId: scope.programmeId,
+            animalId: allocation.animalId,
+            department: 'slaughter',
+          },
+          select: { id: true },
+        })
+      ) {
+        throw new ConflictException(
+          'Cannot release shares after slaughter has been scheduled',
+        );
+      }
       const deleted = await tx.shareAllocation.deleteMany({
         where: { id, programmeId: scope.programmeId },
       });

@@ -82,6 +82,8 @@ model User {
   applicantHouseholds ApplicantHousehold[]
   registrations       Registration[]
 
+  volunteerAssignments Volunteer[]
+
   @@index([status])
   @@index([deletedAt])
   @@index([activeOrganizationId])
@@ -383,6 +385,9 @@ model Programme {
 
   expenseCategories ExpenseCategory[]
 
+  volunteers Volunteer[]
+  schedules  Schedule[]
+
   @@unique([organizationId, year])
   @@index([organizationId, id])
   @@map("programmes")
@@ -488,6 +493,8 @@ model Animal {
   programme Programme     @relation(fields: [programmeId], references: [id], onDelete: Restrict)
   groups    AnimalGroup[]
 
+  schedules Schedule[]
+
   @@unique([programmeId, id])
   @@unique([programmeId, reference])
   @@map("animals")
@@ -556,13 +563,18 @@ model Payment {
   decidedAt      DateTime?     @map("decided_at") @db.Timestamptz(3)
   decisionReason String?       @map("decision_reason")
 
-  registration Registration @relation(fields: [programmeId, registrationId], references: [programmeId, id], onDelete: Restrict)
-  receipt      Receipt?
+  cashAssignmentId  String? @map("cash_assignment_id") @db.Uuid
+  cashSubmittedById String? @map("cash_submitted_by_id") @db.Uuid
+
+  cashAssignment VolunteerTask? @relation(fields: [programmeId, cashAssignmentId], references: [programmeId, id], onDelete: Restrict, onUpdate: Restrict)
+  registration   Registration   @relation(fields: [programmeId, registrationId], references: [programmeId, id], onDelete: Restrict)
+  receipt        Receipt?
 
   @@unique([programmeId, requestKey])
   @@unique([programmeId, registrationId, id])
   @@index([programmeId, id])
   @@index([programmeId, registrationId, status])
+  @@index([cashAssignmentId])
   @@map("payments")
 }
 
@@ -609,4 +621,131 @@ model Expense {
 
   @@index([programmeId, id])
   @@map("expenses")
+}
+
+enum Department {
+  slaughter
+  processing
+  distribution
+  finance
+}
+
+enum WorkState {
+  pending
+  in_progress
+  completed
+}
+
+enum ProcessingStage {
+  cutting
+  weighing
+  packaging
+}
+
+enum IssueState {
+  open
+  resolved
+}
+
+model Volunteer {
+  id          String       @id @default(uuid()) @db.Uuid
+  programmeId String       @map("programme_id") @db.Uuid
+  name        String
+  email       String
+  userId      String?      @map("user_id") @db.Uuid
+  departments Department[]
+  active      Boolean      @default(true)
+
+  programme Programme        @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  user      User?            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  teams     ScheduleMember[]
+  tasks     VolunteerTask[]
+  issues    OperationIssue[]
+
+  @@unique([programmeId, id])
+  @@unique([programmeId, email])
+  @@unique([programmeId, userId])
+  @@map("volunteers")
+}
+
+model Schedule {
+  id            String           @id @default(uuid()) @db.Uuid
+  programmeId   String           @map("programme_id") @db.Uuid
+  department    Department
+  animalId      String?          @map("animal_id") @db.Uuid
+  startsAt      DateTime         @map("starts_at") @db.Timestamptz(3)
+  endsAt        DateTime         @map("ends_at") @db.Timestamptz(3)
+  location      String
+  status        WorkState        @default(pending)
+  stage         ProcessingStage?
+  measuredGrams Int?             @map("measured_grams")
+  packageCount  Int?             @map("package_count")
+  updatedAt     DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  programme Programme        @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  animal    Animal?          @relation(fields: [programmeId, animalId], references: [programmeId, id], onDelete: Restrict, onUpdate: Restrict)
+  team      ScheduleMember[]
+  tasks     VolunteerTask[]
+  issues    OperationIssue[]
+
+  @@unique([programmeId, id])
+  @@unique([programmeId, animalId, department])
+  @@index([programmeId, department, status])
+  @@map("programme_schedules")
+}
+
+model ScheduleMember {
+  programmeId String @map("programme_id") @db.Uuid
+  scheduleId  String @map("schedule_id") @db.Uuid
+  volunteerId String @map("volunteer_id") @db.Uuid
+
+  schedule  Schedule  @relation(fields: [programmeId, scheduleId], references: [programmeId, id], onDelete: Restrict)
+  volunteer Volunteer @relation(fields: [programmeId, volunteerId], references: [programmeId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([programmeId, scheduleId, volunteerId])
+  @@index([programmeId, volunteerId])
+  @@map("schedule_members")
+}
+
+model VolunteerTask {
+  id          String     @id @default(uuid()) @db.Uuid
+  programmeId String     @map("programme_id") @db.Uuid
+  department  Department
+  assigneeId  String     @map("assignee_id") @db.Uuid
+  title       String
+  scheduleId  String?    @map("schedule_id") @db.Uuid
+  resourceId  String?    @map("resource_id") @db.Uuid
+  status      WorkState  @default(pending)
+  note        String?
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  assignee Volunteer        @relation(fields: [programmeId, assigneeId], references: [programmeId, id], onDelete: Restrict)
+  schedule Schedule?        @relation(fields: [programmeId, scheduleId], references: [programmeId, id], onDelete: Restrict, onUpdate: Restrict)
+  issues   OperationIssue[]
+  payments Payment[]
+
+  @@unique([programmeId, id])
+  @@index([programmeId, assigneeId, department])
+  @@map("volunteer_tasks")
+}
+
+model OperationIssue {
+  id          String      @id @default(uuid()) @db.Uuid
+  programmeId String      @map("programme_id") @db.Uuid
+  reporterId  String      @map("reporter_id") @db.Uuid
+  department  Department?
+  taskId      String?     @map("task_id") @db.Uuid
+  operationId String?     @map("operation_id") @db.Uuid
+  description String
+  status      IssueState  @default(open)
+  resolution  String?
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  reporter  Volunteer      @relation(fields: [programmeId, reporterId], references: [programmeId, id], onDelete: Restrict)
+  task      VolunteerTask? @relation(fields: [programmeId, taskId], references: [programmeId, id], onDelete: Restrict, onUpdate: Restrict)
+  operation Schedule?      @relation(fields: [programmeId, operationId], references: [programmeId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([programmeId, id])
+  @@index([programmeId, reporterId])
+  @@map("operation_issues")
 }

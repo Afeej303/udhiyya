@@ -286,6 +286,17 @@ export class RegistrationService {
         },
       },
     });
+    const operations = allocation
+      ? await this.prisma.schedule.findMany({
+          where: {
+            programmeId: scope.programmeId,
+            animalId: allocation.group.animal.id,
+            department: { in: ['slaughter', 'processing'] },
+          },
+          select: { department: true, status: true, stage: true },
+          orderBy: { startsAt: 'asc' },
+        })
+      : [];
     return {
       registration,
       assignment: allocation
@@ -295,7 +306,7 @@ export class RegistrationService {
             animal: allocation.group.animal,
           }
         : null,
-      operations: null,
+      operations: operations.length ? operations : null,
       distribution: null,
     };
   }

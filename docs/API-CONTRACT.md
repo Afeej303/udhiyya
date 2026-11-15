@@ -164,6 +164,8 @@ Committee finance and participant payment and receipt reads are implemented loca
 
 Tasks and operations propose pending → in progress → completed. Processing stages track cutting, weighing and packaging. Slaughter scheduling requires a confirmed animal assignment. Operational updates record the actor and time. Committee approves the exact transition graph, required measurements and correction permissions before consuming writes.
 
+Operations and volunteer routes are implemented locally. Provisioned volunteers link their verified sign-in to the programme by matching the invitation email. The committee can disable access or change departments. Work status values are `pending`, `in_progress`, and `completed`. Schedule edits and reassignment are allowed while work is pending. Only assigned members can advance the corresponding task or operation. Processing requires completed slaughter and completed packaging with measured grams and package count before it contributes stock. Finance tasks use an approved registration as `resourceId`; a cash submission uses the task ID as `assignmentId` and sends `amount` as the shared money object. Committee verification is still required.
+
 ### Beneficiary access and distribution
 
 | Screen | Route | Request and response |

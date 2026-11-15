@@ -115,53 +115,76 @@ export class FinanceService {
   }
 
   async record(scope: Scope, actorId: string, input: CreatePaymentDto) {
-    return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
-      const registration = await tx.registration.findFirst({
-        where: { id: input.registrationId, programmeId: scope.programmeId },
-      });
-      if (!registration) throw new NotFoundException('Registration not found');
-      if (registration.status !== 'approved')
-        throw new ConflictException('Registration must be approved');
-      const amountMinor = this.positiveAmount(input.amount.amountMinor);
-      const receivedAt = this.date(input.receivedAt);
-      const reference = input.reference?.trim() || null;
-      const requestKey = createHash('sha256')
-        .update(
-          JSON.stringify([
-            registration.id,
-            amountMinor,
-            input.method,
-            reference,
-            receivedAt.toISOString(),
-          ]),
-        )
-        .digest('hex');
-      const unique = { programmeId: scope.programmeId, requestKey };
-      const existing = await tx.payment.findUnique({
-        where: { programmeId_requestKey: unique },
-      });
-      if (existing) return paymentView(existing);
-      const payment = await tx.payment.create({
-        data: {
-          ...unique,
-          registrationId: registration.id,
-          amountMinor,
-          method: input.method,
-          reference,
-          receivedAt,
-        },
-      });
-      await this.audit(
-        tx,
-        scope,
-        actorId,
-        'PAYMENT_RECORDED',
-        'payment',
-        payment.id,
-      );
-      return paymentView(payment);
+    return this.serial((tx) =>
+      this.recordInTransaction(tx, scope, actorId, input),
+    );
+  }
+
+  async recordInTransaction(
+    tx: Client,
+    scope: Scope,
+    actorId: string,
+    input: CreatePaymentDto,
+    cashAssignmentId?: string,
+  ) {
+    await this.registrations.getProgramme(tx, scope, false);
+    const registration = await tx.registration.findFirst({
+      where: { id: input.registrationId, programmeId: scope.programmeId },
     });
+    if (!registration) throw new NotFoundException('Registration not found');
+    if (registration.status !== 'approved')
+      throw new ConflictException('Registration must be approved');
+    const amountMinor = this.positiveAmount(input.amount.amountMinor);
+    const receivedAt = this.date(input.receivedAt);
+    const reference = input.reference?.trim() || null;
+    const requestKey = createHash('sha256')
+      .update(
+        JSON.stringify([
+          registration.id,
+          amountMinor,
+          input.method,
+          reference,
+          receivedAt.toISOString(),
+        ]),
+      )
+      .digest('hex');
+    const unique = { programmeId: scope.programmeId, requestKey };
+    const existing = await tx.payment.findUnique({
+      where: { programmeId_requestKey: unique },
+    });
+    if (existing) {
+      if (
+        cashAssignmentId &&
+        (cashAssignmentId !== existing.cashAssignmentId ||
+          existing.cashSubmittedById !== actorId)
+      ) {
+        throw new ConflictException(
+          'A matching payment has already been submitted',
+        );
+      }
+      return paymentView(existing);
+    }
+    const payment = await tx.payment.create({
+      data: {
+        ...unique,
+        registrationId: registration.id,
+        amountMinor,
+        method: input.method,
+        reference,
+        receivedAt,
+        cashAssignmentId,
+        cashSubmittedById: cashAssignmentId ? actorId : undefined,
+      },
+    });
+    await this.audit(
+      tx,
+      scope,
+      actorId,
+      'PAYMENT_RECORDED',
+      'payment',
+      payment.id,
+    );
+    return paymentView(payment);
   }
 
   async verify(
