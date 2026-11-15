@@ -1,0 +1,49 @@
+name: Deploy Udhiyya
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: udhiyya-production-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  frontend:
+    name: Deploy frontend to Vercel
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --global vercel@58.5.1
+      - run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - run: vercel build --prod --token="$VERCEL_TOKEN"
+      - run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
+  backend:
+    name: Trigger backend deploy on Render
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    steps:
+      - name: Request deployment for this commit
+        run: |
+          : "${RENDER_DEPLOY_HOOK_URL:?Set the Render deploy hook secret}"
+          curl --fail --silent --show-error --output /dev/null \
+            --request POST --url-query "ref=$GITHUB_SHA" \
+            "$RENDER_DEPLOY_HOOK_URL"
