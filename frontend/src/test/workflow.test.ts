@@ -47,6 +47,24 @@ describe("Frontend programme workflow rules", () => {
         "QOS-2027-001",
       ),
     ).toBe(8500));
+  it("does not count rejected payments in verified balance", () =>
+    expect(
+      verifiedBalance(
+        [
+          { id: "PAY-1", participant: "P-1", amount: "5000", status: "Rejected" },
+          { id: "PAY-2", participant: "P-1", amount: "3000", status: "Pending verification" },
+          { id: "PAY-3", participant: "P-1", amount: "2000", status: "Verified" },
+        ],
+        "P-1",
+      ),
+    ).toBe(2000));
   it("uses the volunteer department assigned by the committee account", () =>
     expect(demoAccounts.find((a) => a.name === "Yusuf Ahmed")?.department).toBe("Processing"));
+  it("has a finance volunteer configured for collection submissions", () =>
+    expect(demoAccounts.find((a) => a.name === "Nabeel Hassan")?.department).toBe("Finance"));
+  it("contains initial cash collection task for finance volunteer", () => {
+    const finTask = initialRecords.tasks.find((t) => t.department === "Finance");
+    expect(finTask).toBeDefined();
+    expect(finTask?.reference).toBe("QOS-2027-001");
+  });
 });

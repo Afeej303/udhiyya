@@ -48,6 +48,7 @@ import {
   animalsAdapter,
   householdsAdapter,
   distributionAdapter,
+  operationsAdapter,
 } from "@/services/api";
 const config: Record<
   string,
@@ -268,6 +269,9 @@ export function AdminWorkspace({ section }: { section: string }) {
   const [importMap, setImportMap] = useState<Record<string, string>>({});
   const [allocationParticipant, setAllocationParticipant] = useState("");
   const [allocationGroup, setAllocationGroup] = useState("");
+  const [taskDepartment, setTaskDepartment] = useState("Finance");
+  const [taskVolunteer, setTaskVolunteer] = useState("");
+  const [taskParticipant, setTaskParticipant] = useState("");
   const [error, setError] = useState("");
   const [report, setReport] = useState("participants");
   const cfg = config[section];
@@ -285,6 +289,15 @@ export function AdminWorkspace({ section }: { section: string }) {
   function open(kind: string, row?: Row) {
     setError("");
     setSelected(row || null);
+    if (kind === "task") {
+      setTaskDepartment("Finance");
+      const finVol = records.volunteers.find((v) => v.department === "Finance") || records.volunteers[0];
+      if (finVol) setTaskVolunteer(`${finVol.name} (${finVol.id})`);
+      if (records.participants.length > 0) {
+        const p = records.participants[0];
+        setTaskParticipant(`${p.name} · ${p.id} · Due: ${money(Number(p.amount) - verifiedBalance(records.payments, p.id))}`);
+      }
+    }
     setModal(kind);
   }
   function review(row: Row, status: string, reason?: string) {
@@ -299,10 +312,16 @@ export function AdminWorkspace({ section }: { section: string }) {
     toast.success(`Registration ${status.toLowerCase()}`);
     setModal(null);
   }
-  function verify(row: Row, status: string) {
-    update("payments", row.id, { status });
+  function verify(row: Row, status: string, reason?: string) {
+    update("payments", row.id, { status, ...(reason ? { reason } : {}) });
     financeAdapter
-      .verifyPayment(profile?.orgId || "org_demo", "2027", row.id, status === "Verified")
+      .verifyPayment(
+        profile?.orgId || "org_demo",
+        "2027",
+        row.id,
+        status === "Verified" ? "verify" : "reject",
+        reason,
+      )
       .catch(() => {});
     toast.success(
       status === "Verified"
@@ -797,9 +816,24 @@ export function AdminWorkspace({ section }: { section: string }) {
                   </Button>
                 )}
                 {section === "payments" && r.status === "Pending verification" && (
-                  <Button variant="ghost" size="sm" onClick={() => verify(r, "Verified")}>
-                    Verify
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => verify(r, "Verified")}>
+                      Verify
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => {
+                        const reason = window.prompt("Reason for rejecting payment:");
+                        if (reason !== null) {
+                          verify(r, "Rejected", reason.trim() || "Payment audit rejected");
+                        }
+                      }}
+                    >
+                      Reject
+                    </Button>
+                  </div>
                 )}
                 {section === "payments" && r.status === "Verified" && (
                   <Button
@@ -932,9 +966,24 @@ export function AdminWorkspace({ section }: { section: string }) {
                   { key: "amount", label: "Amount" },
                 ]}
                 actions={(r) => (
-                  <Button size="sm" onClick={() => verify(r, "Verified")}>
-                    Verify
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" onClick={() => verify(r, "Verified")}>
+                      Verify
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => {
+                        const reason = window.prompt("Reason for rejecting payment:");
+                        if (reason !== null) {
+                          verify(r, "Rejected", reason.trim() || "Payment audit rejected");
+                        }
+                      }}
+                    >
+                      Reject
+                    </Button>
+                  </div>
                 )}
               />
               <h2 className="mb-4 mt-8 text-lg font-bold">Cash collection summary</h2>
@@ -1345,25 +1394,100 @@ export function AdminWorkspace({ section }: { section: string }) {
             onSubmit={(e) => {
               e.preventDefault();
               const d = new FormData(e.currentTarget);
+              const dept = taskDepartment;
+              const volunteer = records.volunteers.find(
+                (v) => `${v.name} (${v.id})` === taskVolunteer || v.id === taskVolunteer || v.name === taskVolunteer,
+              ) || records.volunteers[0];
+              const participant = records.participants.find(
+                (p) => `${p.name} · ${p.id}`.startsWith(taskParticipant.split(" · ")[0] || "") || p.id === taskParticipant,
+              );
+              const title =
+                dept === "Finance" && participant
+                  ? `Collect cash contribution for ${participant.name} (${participant.id})`
+                  : String(d.get("name") || `${dept} operation task`);
+              const ref = dept === "Finance" && participant ? participant.id : String(d.get("reference") || "");
+              const volunteerId = volunteer?.id || "VOL-004";
+              const volunteerName = volunteer?.name || "Nabeel Hassan";
+
+              // 1. Send to backend if available
+              operationsAdapter
+                .createTask(profile?.orgId || "org_demo", "2027", {
+                  department: dept.toLowerCase() as any,
+                  assigneeId: volunteerId,
+                  title,
+                  resourceId: dept === "Finance" && participant ? participant.id : null,
+                })
+                .catch(() => {});
+
+              // 2. Add to demo store for instant feedback
               add("tasks", {
                 id: `TSK-${records.tasks.length + 1}`,
-                name: String(d.get("name")),
-                department: String(d.get("department")),
-                reference: String(d.get("reference")),
+                name: title,
+                department: dept,
+                reference: ref,
+                assigneeId: volunteerId,
+                assigneeName: volunteerName,
                 status: "Pending",
               });
-              toast.success("Task assigned to department");
+
+              toast.success(
+                dept === "Finance" && participant
+                  ? `Cash collection for ${participant.name} assigned to ${volunteerName}`
+                  : `Task assigned to ${volunteerName}`,
+              );
               setModal(null);
             }}
           >
-            <Field label="Task" name="name" required />
             <SelectField
               label="Department"
               name="department"
-              options={["Slaughter", "Processing", "Distribution", "Finance"]}
+              options={["Finance", "Slaughter", "Processing", "Distribution"]}
+              value={taskDepartment}
+              onChange={setTaskDepartment}
             />
-            <Field label="Animal / participant / package reference" name="reference" required />
-            <Field label="Due date" type="date" />
+
+            {taskDepartment === "Finance" ? (
+              <>
+                <SelectField
+                  label="Assign volunteer (Finance)"
+                  options={
+                    records.volunteers.filter((v) => v.department === "Finance").length > 0
+                      ? records.volunteers.filter((v) => v.department === "Finance").map((v) => `${v.name} (${v.id})`)
+                      : records.volunteers.map((v) => `${v.name} (${v.id})`)
+                  }
+                  value={taskVolunteer}
+                  onChange={setTaskVolunteer}
+                />
+                <SelectField
+                  label="Select participant for cash collection"
+                  options={records.participants.map(
+                    (p) =>
+                      `${p.name} · ${p.id} · Due: ${money(
+                        Number(p.amount) - verifiedBalance(records.payments, p.id),
+                      )}`,
+                  )}
+                  value={taskParticipant}
+                  onChange={setTaskParticipant}
+                />
+                <Field
+                  label="Collection notes or ward (optional)"
+                  name="reference"
+                  placeholder="e.g. Ward 02 - East Lane"
+                />
+              </>
+            ) : (
+              <>
+                <Field label="Task description" name="name" required />
+                <SelectField
+                  label="Assign volunteer"
+                  options={records.volunteers.map((v) => `${v.name} (${v.id})`)}
+                  value={taskVolunteer}
+                  onChange={setTaskVolunteer}
+                />
+                <Field label="Animal / package reference" name="reference" required />
+              </>
+            )}
+
             <Button type="submit">Assign task</Button>
           </form>
         )}

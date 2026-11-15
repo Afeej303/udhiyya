@@ -6,8 +6,8 @@ import { useDemo } from "./DemoStore";
 import { PageTitle, Metrics, DataTable, Modal, Status, SelectField, Timeline } from "./WorkflowUI";
 import { Button, btn } from "./Btn";
 import { Field } from "./AuthShell";
-import { money, type Row } from "@/lib/workflow";
-import { operationsAdapter } from "@/services/api";
+import { money, verifiedBalance, type Row } from "@/lib/workflow";
+import { operationsAdapter, distributionAdapter } from "@/services/api";
 export function VolunteerWorkspace({ section }: { section: string }) {
   const { account, records, update, add } = useDemo();
   const dept = account?.department || "Processing";
@@ -32,8 +32,10 @@ export function VolunteerWorkspace({ section }: { section: string }) {
   function taskProgress(r: Row) {
     const status = r.status === "Pending" ? "In progress" : "Completed";
     update("tasks", r.id, { status });
+    const backendStatus: "in_progress" | "completed" =
+      status === "Completed" ? "completed" : "in_progress";
     operationsAdapter
-      .updateTaskProgress("org_demo", "2027", r.id, status)
+      .updateTaskProgress("org_demo", "2027", r.id, backendStatus)
       .catch(() => {});
     toast.success(`Task ${status.toLowerCase()}`);
   }
@@ -213,56 +215,100 @@ export function VolunteerWorkspace({ section }: { section: string }) {
           )}
           {dept === "Finance" && (
             <>
-              <Metrics
-                items={[
-                  { label: "Assigned participants", value: 1 },
-                  {
-                    label: "Submitted collections",
-                    value: records.payments.filter((p) => p.method === "Cash").length,
-                  },
-                  {
-                    label: "Pending verification",
-                    value: records.payments.filter(
-                      (p) => p.method === "Cash" && p.status === "Pending verification",
-                    ).length,
-                  },
-                  {
-                    label: "Verified collections",
-                    value: records.payments.filter(
-                      (p) => p.method === "Cash" && p.status === "Verified",
-                    ).length,
-                  },
-                ]}
-              />
-              <DataTable
-                rows={records.participants.filter((p) => p.id === "QOS-2027-001")}
-                columns={[
-                  { key: "id", label: "Reference" },
-                  { key: "name", label: "Participant" },
-                  { key: "amount", label: "Contribution" },
-                ]}
-                search={search}
-                onSearch={setSearch}
-                actions={(r) => (
-                  <Button variant="outline" size="sm" onClick={() => open("cash", r)}>
-                    Record cash
-                  </Button>
-                )}
-              />
-              <h2 className="mb-5 mt-8 text-lg font-bold">My collection history</h2>
-              <DataTable
-                rows={records.payments.filter((p) => p.method === "Cash")}
-                columns={[
-                  { key: "id", label: "Submission" },
-                  { key: "amount", label: "Amount" },
-                  { key: "date", label: "Date" },
-                  { key: "status", label: "Verification" },
-                ]}
-              />
-              <p className="mt-5 text-xs text-muted-foreground">
-                Cash collection is a submission, not payment verification. Only finance committee
-                verification updates the participant’s official receipt.
-              </p>
+              {(() => {
+                const finTasks = records.tasks.filter((t) => t.department === "Finance");
+                const assignedParticipantIds = finTasks.map((t) => t.reference || t.resourceId);
+                const assigned = records.participants.filter(
+                  (p) => assignedParticipantIds.includes(p.id) || p.id === "QOS-2027-001",
+                );
+                const mySubmissions = records.payments.filter((p) => p.method === "Cash");
+
+                return (
+                  <>
+                    <Metrics
+                      items={[
+                        { label: "Assigned collections", value: assigned.length },
+                        {
+                          label: "Submitted collections",
+                          value: mySubmissions.length,
+                        },
+                        {
+                          label: "Pending verification",
+                          value: mySubmissions.filter(
+                            (p) => p.status === "Pending verification",
+                          ).length,
+                        },
+                        {
+                          label: "Verified collections",
+                          value: mySubmissions.filter((p) => p.status === "Verified").length,
+                        },
+                      ]}
+                    />
+                    <div className="mb-4 flex items-center justify-between">
+                      <h2 className="text-lg font-bold">Assigned participant collections</h2>
+                      <span className="text-xs text-muted-foreground">
+                        Authorised by committee · Record cash received on the ground
+                      </span>
+                    </div>
+                    {assigned.length === 0 ? (
+                      <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                        No share collections assigned yet by the committee.
+                      </p>
+                    ) : (
+                      <DataTable
+                        rows={assigned}
+                        columns={[
+                          { key: "id", label: "Reference" },
+                          { key: "name", label: "Participant" },
+                          { key: "amount", label: "Total contribution" },
+                        ]}
+                        search={search}
+                        onSearch={setSearch}
+                        actions={(r) => {
+                          const verified = verifiedBalance(records.payments, r.id);
+                          const due = Number(r.amount) - verified;
+                          const isFullyPaid = due <= 0;
+                          return (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">
+                                Due: {money(Math.max(0, due))}
+                              </span>
+                              <Button
+                                variant={isFullyPaid ? "outline" : "ink"}
+                                size="sm"
+                                disabled={isFullyPaid}
+                                onClick={() => open("cash", r)}
+                              >
+                                {isFullyPaid ? "Fully paid" : "Record cash"}
+                              </Button>
+                            </div>
+                          );
+                        }}
+                      />
+                    )}
+                    <h2 className="mb-5 mt-8 text-lg font-bold">My collection history</h2>
+                    <DataTable
+                      rows={mySubmissions}
+                      columns={[
+                        { key: "id", label: "Submission" },
+                        { key: "name", label: "Participant" },
+                        { key: "amount", label: "Amount" },
+                        { key: "date", label: "Date" },
+                        { key: "status", label: "Verification" },
+                      ]}
+                    />
+                    <div className="mt-5 rounded-lg border border-border bg-muted/30 p-4">
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        <strong className="text-foreground">Separation of duties:</strong> Volunteer cash
+                        collection is a submission, not payment verification. Submitted collections
+                        remain in the audit queue as <em>Pending verification</em> until an authorised
+                        finance committee member approves them and verifies physical cash. Volunteers
+                        cannot verify their own submissions.
+                      </p>
+                    </div>
+                  </>
+                );
+              })()}
             </>
           )}
         </>
@@ -443,6 +489,13 @@ export function VolunteerWorkspace({ section }: { section: string }) {
                 disabled={selected.stage === "Slaughter completed"}
                 onClick={() => {
                   update("animals", selected.id, { stage: "Slaughter completed" });
+                  operationsAdapter
+                    .updateOperationProgress("org_demo", "2027", selected.id, {
+                      status: "completed",
+                      stage: "slaughter_completed",
+                      note: "Slaughter confirmed by ground volunteer",
+                    })
+                    .catch(() => {});
                   toast.success("Slaughter completed. Processing stage is ready.");
                   setModal(null);
                 }}
@@ -455,10 +508,19 @@ export function VolunteerWorkspace({ section }: { section: string }) {
                 onSubmit={(e) => {
                   e.preventDefault();
                   const d = new FormData(e.currentTarget);
+                  const stageVal = String(d.get("stage"));
+                  const weightVal = String(d.get("weight"));
                   update("animals", selected.id, {
-                    stage: String(d.get("stage")),
-                    weight: String(d.get("weight")),
+                    stage: stageVal,
+                    weight: weightVal,
                   });
+                  operationsAdapter
+                    .updateOperationProgress("org_demo", "2027", selected.id, {
+                      status: "in_progress",
+                      stage: stageVal.toLowerCase().replace(/\s+/g, "_"),
+                      measuredGrams: Math.round(Number(weightVal) * 1000),
+                    })
+                    .catch(() => {});
                   toast.success(
                     "Actual processed quantity and stage recorded. Distribution ledger updated.",
                   );
@@ -500,17 +562,41 @@ export function VolunteerWorkspace({ section }: { section: string }) {
             onSubmit={(e) => {
               e.preventDefault();
               const d = new FormData(e.currentTarget);
+              const matchingTask = records.tasks.find(
+                (t) =>
+                  t.department === "Finance" &&
+                  (t.reference === selected.id || t.resourceId === selected.id),
+              );
+              const assignmentId = matchingTask?.id || "TSK-005";
+              const amount = Number(d.get("amount"));
+              const date = String(d.get("date"));
+              const notes = String(d.get("notes") || "");
+
+              operationsAdapter
+                .submitCash("org_demo", "2027", {
+                  assignmentId,
+                  amount,
+                  receivedAt: new Date(date).toISOString(),
+                  reference: notes,
+                })
+                .catch(() => {});
+
               add("payments", {
                 id: `PAY-${records.payments.length + 1}`,
                 participant: selected.id,
                 name: selected.name,
-                amount: String(d.get("amount")),
+                amount: String(amount),
                 method: "Cash",
-                date: String(d.get("date")),
-                notes: String(d.get("notes")),
+                date,
+                notes,
                 status: "Pending verification",
               });
-              toast.success("Cash submitted. Awaiting finance committee verification.");
+
+              if (matchingTask) {
+                update("tasks", matchingTask.id, { status: "In progress" });
+              }
+
+              toast.success("Cash collection submitted. Awaiting finance committee verification.");
               setModal(null);
             }}
           >
@@ -549,6 +635,9 @@ export function VolunteerWorkspace({ section }: { section: string }) {
               <Button
                 onClick={() => {
                   update("distribution", selected.id, { status: "Ready" });
+                  distributionAdapter
+                    .transition("org_demo", "2027", selected.id, { action: "pack" })
+                    .catch(() => {});
                   toast.success("Package marked ready");
                   setModal(null);
                 }}
@@ -567,6 +656,9 @@ export function VolunteerWorkspace({ section }: { section: string }) {
                   }
                   if (!handover) return;
                   update("distribution", selected.id, { status: "Collected" });
+                  distributionAdapter
+                    .transition("org_demo", "2027", selected.id, { action: "confirm" })
+                    .catch(() => {});
                   toast.success("Collection confirmed after verified handover");
                   setModal(null);
                 }}

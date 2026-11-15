@@ -7,7 +7,8 @@ import { useDemo } from "./DemoStore";
 import { PageTitle, Metrics, Timeline, Status, DataTable, Modal, SelectField } from "./WorkflowUI";
 import { Button, btn } from "./Btn";
 import { Field } from "./AuthShell";
-import { money, sample, verifiedBalance } from "@/lib/workflow";
+import { money, sample, verifiedBalance, type Row } from "@/lib/workflow";
+import { financeAdapter } from "@/services/api";
 export const participantSections = [
   { slug: "registration", label: "My registration" },
   { slug: "household", label: "Household" },
@@ -22,6 +23,7 @@ export function ParticipantWorkspace({ section }: { section: string }) {
   const { participant, enter } = useParticipant();
   const { records, add } = useDemo();
   const [payment, setPayment] = useState(false);
+  const [viewReceipt, setViewReceipt] = useState<Row | null>(null);
   if (!participant) return null;
   const reference = participant.reference || "QOS-2027-001";
   const registration = records.participants.find((p) => p.id === reference);
@@ -223,10 +225,7 @@ export function ParticipantWorkspace({ section }: { section: string }) {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    toast.info(`Sample receipt ${r.id} · ${money(r.amount)} · Verified`);
-                    window.print();
-                  }}
+                  onClick={() => setViewReceipt(r)}
                 >
                   <Printer className="size-4" />
                   Receipt
@@ -324,30 +323,103 @@ export function ParticipantWorkspace({ section }: { section: string }) {
           onSubmit={(e) => {
             e.preventDefault();
             const d = new FormData(e.currentTarget);
+            const amount = Number(d.get("amount"));
+            const method = String(d.get("method"));
+            const date = String(d.get("date"));
+            const refNote = String(d.get("reference") || "");
+
+            financeAdapter
+              .recordPayment("org_demo", "2027", {
+                registrationId: reference,
+                amount: { amount, currency: "INR" },
+                method: method.toLowerCase().replace(/\s+/g, "_") as any,
+                reference: refNote,
+                receivedAt: new Date(date).toISOString(),
+              })
+              .catch(() => {});
+
             add("payments", {
               id: `PAY-${records.payments.length + 1}`,
               participant: reference,
               name: participant.name,
-              amount: String(d.get("amount")),
-              method: String(d.get("method")),
-              date: String(d.get("date")),
+              amount: String(amount),
+              method,
+              date,
+              reference: refNote,
               status: "Pending verification",
             });
-            toast.success("Sample payment submitted for committee verification");
+            toast.success("Payment submitted for committee verification");
             setPayment(false);
           }}
         >
           <Field label="Amount" name="amount" type="number" min={1} required />
           <SelectField label="Payment method" name="method" options={["Bank transfer", "Cash"]} />
           <Field label="Transaction date" name="date" type="date" required />
-          <Field label="Transaction reference" required />
+          <Field label="Transaction reference" name="reference" required />
           <label className="block text-sm">
             Supporting document
             <input type="file" className="mt-2 block text-xs" />
           </label>
           <Button>Submit for verification</Button>
-          <p className="text-xs text-muted-foreground">No actual money is transferred.</p>
+          <p className="text-xs text-muted-foreground">
+            Submitted payments remain pending until verified by the finance committee.
+          </p>
         </form>
+      </Modal>
+
+      <Modal
+        open={viewReceipt !== null}
+        onClose={() => setViewReceipt(null)}
+        title="Official payment receipt"
+      >
+        {viewReceipt && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border bg-card p-6">
+              <div className="flex items-center justify-between border-b border-border pb-4">
+                <div>
+                  <h3 className="text-lg font-bold">QurbaniOS</h3>
+                  <p className="text-xs text-muted-foreground">Community Aḍḥiyah Programme · 2027</p>
+                </div>
+                <Status>Verified</Status>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">Receipt number</p>
+                  <p className="font-mono font-medium">{viewReceipt.id}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Date of receipt</p>
+                  <p className="font-medium">{viewReceipt.date}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Received from</p>
+                  <p className="font-medium">{viewReceipt.name || participant.name}</p>
+                  <p className="font-mono text-xs text-muted-foreground">{reference}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Payment method</p>
+                  <p className="font-medium">{viewReceipt.method}</p>
+                </div>
+              </div>
+              <div className="mt-6 rounded-lg bg-accent/60 p-4 text-center">
+                <p className="text-xs text-muted-foreground">Amount verified</p>
+                <p className="text-2xl font-bold text-cobalt">{money(viewReceipt.amount)}</p>
+              </div>
+              <p className="mt-4 text-center text-[11px] text-muted-foreground">
+                This receipt confirms that the specified contribution was received and audited by the finance committee.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setViewReceipt(null)}>
+                Close
+              </Button>
+              <Button onClick={() => window.print()}>
+                <Printer className="size-4" />
+                Print receipt
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </>
   );

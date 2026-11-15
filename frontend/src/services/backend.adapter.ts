@@ -221,14 +221,38 @@ export const financeAdapter = {
     });
   },
 
-  async verifyPayment(orgId: string, programmeId: string, paymentId: string, verified: boolean) {
+  async verifyPayment(
+    orgId: string,
+    programmeId: string,
+    paymentId: string,
+    action: "verify" | "reject",
+    reason?: string,
+  ) {
     return await request<any>(
       `/organisations/${orgId}/programmes/${programmeId}/payments/${paymentId}/verification`,
       {
         method: "POST",
-        body: JSON.stringify({ verified }),
+        body: JSON.stringify({ action, reason }),
       },
     );
+  },
+
+  async myPayments(orgId: string, programmeId: string, query?: Record<string, any>) {
+    const qs = query ? `?${new URLSearchParams(query).toString()}` : "";
+    try {
+      return await request<any>(`/organisations/${orgId}/programmes/${programmeId}/me/payments${qs}`);
+    } catch {
+      return null;
+    }
+  },
+
+  async myReceipts(orgId: string, programmeId: string, query?: Record<string, any>) {
+    const qs = query ? `?${new URLSearchParams(query).toString()}` : "";
+    try {
+      return await request<any>(`/organisations/${orgId}/programmes/${programmeId}/me/receipts${qs}`);
+    } catch {
+      return null;
+    }
   },
 
   async categories(orgId: string, programmeId: string) {
@@ -260,12 +284,94 @@ export const operationsAdapter = {
     }
   },
 
-  async updateTaskProgress(orgId: string, programmeId: string, taskId: string, progress: string) {
+  async createTask(
+    orgId: string,
+    programmeId: string,
+    data: {
+      department: string;
+      assigneeId: string;
+      title: string;
+      resourceId?: string | null;
+      scheduleId?: string | null;
+    },
+  ) {
+    return await request<any>(`/organisations/${orgId}/programmes/${programmeId}/tasks`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getCollections(orgId: string, programmeId: string) {
+    try {
+      return await request<any>(
+        `/organisations/${orgId}/programmes/${programmeId}/volunteer/collections`,
+      );
+    } catch {
+      return null;
+    }
+  },
+
+  async submitCash(
+    orgId: string,
+    programmeId: string,
+    data: {
+      assignmentId: string;
+      amount: number;
+      currency?: string;
+      receivedAt: string;
+      reference?: string;
+    },
+  ) {
     return await request<any>(
-      `/organisations/${orgId}/programmes/${programmeId}/tasks/${taskId}/progress`,
+      `/organisations/${orgId}/programmes/${programmeId}/volunteer/cash-submissions`,
       {
-        method: "PATCH",
-        body: JSON.stringify({ progress }),
+        method: "POST",
+        body: JSON.stringify({
+          assignmentId: data.assignmentId,
+          amount: {
+            amount: data.amount,
+            currency: data.currency || "INR",
+          },
+          receivedAt: data.receivedAt,
+          reference: data.reference,
+        }),
+      },
+    );
+  },
+
+  async updateTaskProgress(
+    orgId: string,
+    programmeId: string,
+    taskId: string,
+    status: "pending" | "in_progress" | "completed",
+    note?: string,
+  ) {
+    return await request<any>(
+      `/organisations/${orgId}/programmes/${programmeId}/volunteer/tasks/${taskId}/progress`,
+      {
+        method: "POST",
+        body: JSON.stringify({ status, note }),
+      },
+    );
+  },
+
+  async updateOperationProgress(
+    orgId: string,
+    programmeId: string,
+    operationId: string,
+    data: {
+      status: "pending" | "in_progress" | "completed";
+      stage?: string;
+      measuredGrams?: number;
+      packageCount?: number;
+      note?: string;
+    },
+  ) {
+    return await request<any>(
+      `/organisations/${orgId}/programmes/${programmeId}/volunteer/operations/${operationId}/progress`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
       },
     );
   },
