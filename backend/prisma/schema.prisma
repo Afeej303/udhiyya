@@ -379,6 +379,8 @@ model Programme {
   applicantHouseholds  ApplicantHousehold[]
   registrations        Registration[]
 
+  animals Animal[]
+
   @@unique([organizationId, year])
   @@index([organizationId, id])
   @@map("programmes")
@@ -461,8 +463,60 @@ model Registration {
   household ApplicantHousehold  @relation(fields: [householdId, programmeId, applicantId], references: [id, programmeId, userId], onDelete: Restrict, onUpdate: Restrict)
   option    ParticipationOption @relation(fields: [programmeId, optionId], references: [programmeId, id], onDelete: Restrict, onUpdate: Restrict)
 
+  shareAllocation ShareAllocation?
+
+  @@unique([programmeId, id])
   @@unique([programmeId, applicantId])
   @@index([programmeId, id])
   @@index([programmeId, status])
   @@map("registrations")
+}
+
+model Animal {
+  id                   String    @id @default(uuid()) @db.Uuid
+  programmeId          String    @map("programme_id") @db.Uuid
+  reference            String
+  shareCapacity        Int       @map("share_capacity")
+  supplierName         String?   @map("supplier_name")
+  procurementCostMinor Int?      @map("procurement_cost_minor")
+  procuredAt           DateTime? @map("procured_at") @db.Timestamptz(3)
+
+  programme Programme     @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  groups    AnimalGroup[]
+
+  @@unique([programmeId, id])
+  @@unique([programmeId, reference])
+  @@map("animals")
+}
+
+model AnimalGroup {
+  id          String @id @default(uuid()) @db.Uuid
+  programmeId String @map("programme_id") @db.Uuid
+  animalId    String @map("animal_id") @db.Uuid
+  name        String
+
+  animal      Animal            @relation(fields: [programmeId, animalId], references: [programmeId, id], onDelete: Restrict)
+  allocations ShareAllocation[]
+
+  @@unique([programmeId, id, animalId])
+  @@index([programmeId, id])
+  @@map("animal_groups")
+}
+
+model ShareAllocation {
+  id             String @id @default(uuid()) @db.Uuid
+  programmeId    String @map("programme_id") @db.Uuid
+  animalId       String @map("animal_id") @db.Uuid
+  groupId        String @map("group_id") @db.Uuid
+  registrationId String @unique @map("registration_id") @db.Uuid
+  shares         Int
+
+  group        AnimalGroup  @relation(fields: [programmeId, groupId, animalId], references: [programmeId, id, animalId], onDelete: Restrict, onUpdate: Restrict)
+  registration Registration @relation(fields: [programmeId, registrationId], references: [programmeId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([programmeId, registrationId])
+  @@index([programmeId, id])
+  @@index([programmeId, animalId])
+  @@index([programmeId, groupId])
+  @@map("share_allocations")
 }

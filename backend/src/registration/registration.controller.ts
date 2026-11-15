@@ -133,15 +133,6 @@ export class ApplicantRegistrationController {
     @Param() params: ProgrammeParams,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    const registration = await this.registrations.getOwn(
-      scope(params),
-      user.id,
-    );
-    return {
-      registration,
-      assignment: null,
-      operations: null,
-      distribution: null,
-    };
+    return this.registrations.ownParticipation(scope(params), user.id);
   }
 }

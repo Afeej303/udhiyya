@@ -142,7 +142,7 @@ Committee decisions transition submitted to approved, rejected or cancelled, or 
 | PAR06, ADM09 | P GET /me/receipts, GET /receipts/:id | Own receipt metadata list. Detail requires owner or finance-authorized committee. Fields include receipt number, issue date, kind, amount when applicable and associated record ID. |
 | VOL03 finance | P GET /volunteer/collections, POST /volunteer/cash-submissions | Assigned finance volunteer. Read own collection assignments. Submit `{ assignmentId, amount, receivedAt, reference? }` → pending payment summary. |
 
-Pending payments move to verified or rejected. Verified balances and payment receipts derive from verified records only. Duplicate submissions and verification retries must preserve a single financial effect. Shares require approved registrations, valid tenant relations and available capacity. Confirm payment prerequisites for allocation, receipt download format, refund/adjustment rules and receipt issuance timing with M1/M2.
+Pending payments move to verified or rejected. Verified balances and payment receipts derive from verified records only. Duplicate submissions and verification retries must preserve a single financial effect. Shares require approved registrations, valid tenant relations and available capacity. Animal, group and share-allocation routes are implemented for local verification. An approved registration may have one assignment, up to its approved share count. Approval is required for allocating shares. Groups on the same animal draw from its shared capacity. Release an assignment before cancelling an approved registration. Receipt download format, refund rules and receipt issuance timing remain open.
 
 ### Volunteer assignments and operations
 

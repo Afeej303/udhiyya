@@ -271,6 +271,35 @@ export class RegistrationService {
     return registrationView(row);
   }
 
+  async ownParticipation(scope: Scope, userId: string) {
+    const registration = await this.getOwn(scope, userId);
+    const allocation = await this.prisma.shareAllocation.findUnique({
+      where: { registrationId: registration.id },
+      select: {
+        shares: true,
+        group: {
+          select: {
+            id: true,
+            name: true,
+            animal: { select: { id: true, reference: true } },
+          },
+        },
+      },
+    });
+    return {
+      registration,
+      assignment: allocation
+        ? {
+            shares: allocation.shares,
+            group: { id: allocation.group.id, name: allocation.group.name },
+            animal: allocation.group.animal,
+          }
+        : null,
+      operations: null,
+      distribution: null,
+    };
+  }
+
   async list(scope: Scope, query: RegistrationQuery) {
     await this.getProgramme(this.prisma, scope, false);
     const rows = await this.prisma.registration.findMany({
@@ -326,6 +355,16 @@ export class RegistrationService {
         throw new ConflictException(
           'Registration status transition is not allowed',
         );
+      }
+      if (status === 'cancelled') {
+        const allocation = await tx.shareAllocation.findUnique({
+          where: { registrationId: id },
+          select: { id: true },
+        });
+        if (allocation)
+          throw new ConflictException(
+            'Release the share allocation before cancelling registration',
+          );
       }
       const changed = await tx.registration.update({
         where: { id, programmeId: scope.programmeId },
