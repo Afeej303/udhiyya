@@ -13,36 +13,67 @@ User value and relevance to the problem, demo impact, feasibility in the time av
 
 | ID | Idea | User value | Demo impact | Feasibility | UI cost | Risk | Decision |
 |---|---|---|---|---|---|---|---|
-| EF-01 | TBD | H/M/L | H/M/L | H/M/L | S/M/L | TBD | Proposed |
+| EF-01 | Analytics Dashboard | High – gives committee historical trends & live metrics | High – visual charts in demo | High | M | Low | Selected |
+| EF-02 | Smart Allocation Engine | Medium – auto-assigns animal shares with constraints | Medium – shows allocation optimization | Medium | M | Medium | Selected |
+| EF-03 | Financial Intelligence (auto-categorise expenses) | Medium – reduces manual bookkeeping | Medium – displays expense breakdowns | Medium | S | Low | Optional |
+| EF-04 | Operational Intelligence (bottleneck detection) | Medium – highlights slaughter/processing delays | Medium – live warning badges | Medium | S | Low | Optional |
+| EF-05 | Household Intelligence (duplicate detection) | Low – cleans participant records | Low – shows duplicate warnings | High | S | Low | Optional |
 
 Decision values: `Selected`, `Optional`, `Rejected`. Priority: P1 best value, P2 if time remains, P3 stretch.
 
 ## 3. Selected features
 
-### EF-XX: [Name]
+### EF-01: Analytics Dashboard
 - **Priority / status:** P1 · Selected
-- **Problem and target user:** TBD
-- **Why it is beyond the MVP:** TBD
-- **Expected behavior and acceptance criteria:** TBD
-- **Backend extension:** endpoints in the extension namespace (method, path, request, response, errors), data stored. TBD
+- **Problem and target user:** Committee admins lack deep analytical insights into multi-year registration growth, animal yield averages, and payment completion velocity.
+- **Why it is beyond the MVP:** The MVP provides basic operational counts; this feature adds trend analytics, yield distribution curves, and interactive visualizations.
+- **Expected behavior and acceptance criteria:** Renders interactive charts showing participant distribution by ward/neighbourhood, animal weight distribution, and payment collection velocity over time.
+- **Backend extension:**
+  - `GET /api/ext/EF-01/summary?programmeId=:id` -> returns aggregated analytics metrics.
+  - `GET /api/ext/EF-01/charts?type=:chartType&programmeId=:id` -> returns timeseries / category dataset.
 - **UI component:**
-  - Slot: TBD (from `docs/FRONTEND-NEEDS.md`)
-  - Props in: TBD
-  - Events out: TBD
+  - Slot: `analytics-dashboard-slot` (from `docs/FRONTEND-NEEDS.md`)
+  - Props in: `{ programmeId: number }`
+  - Events out: none
   - States: loading, empty, error, success
-  - Test ids or roles: TBD
-- **Flag:** `FEATURE_EF_XX` (default off)
-- **External services:** setup, cost, rate limits, failure behavior, fallback. TBD
-- **V0 / V1 tests:** TBD
-- **V2 check (5 minutes or less):** exact steps and expected result. TBD
-- **Rollback:** set the flag off. Data side effects: TBD
-- **Fallback if unfinished:** TBD
-- **Effort / UI cost:** TBD
+  - Test ids or roles: `data-testid="ef01-analytics-dashboard"`
+- **Flag:** `FEATURE_EF_01` (default off)
+- **External services:** None (aggregates existing PostgreSQL data)
+- **V0 / V1 tests:** Unit tests for analytics aggregation queries; sandbox render test with mock dataset.
+- **V2 check (5 minutes or less):** Open Committee Dashboard with `FEATURE_EF_01=on`. Visual charts render with synthetic data; toggle flag off, slot disappears cleanly.
+- **Rollback:** Set `FEATURE_EF_01=off`. No schema mutations or data side effects.
+- **Fallback if unfinished:** Hide slot; dashboard displays standard MVP summary counters.
+- **Effort / UI cost:** M
+
+---
+
+### EF-02: Smart Allocation Engine
+- **Priority / status:** P1 · Selected
+- **Problem and target user:** Committee volunteers spend hours manually pairing 7 participant shares per cattle/buffalo while respecting preferences and group affinities.
+- **Why it is beyond the MVP:** The MVP supports manual 1-by-1 allocation; this auto-solves the knapsack/constraint matching problem across all unassigned participants.
+- **Expected behavior and acceptance criteria:** One-click algorithm groups unassigned participants into available animal shares matching preferred day/time and household groupings without leaving fractional orphan slots.
+- **Backend extension:**
+  - `POST /api/ext/EF-02/optimize` -> accepts `{ programmeId: number, policy: string }`, returns proposed allocations preview.
+  - `POST /api/ext/EF-02/commit` -> commits proposed allocations to the database.
+- **UI component:**
+  - Slot: `smart-allocation-slot` (from `docs/FRONTEND-NEEDS.md`)
+  - Props in: `{ programmeId: number, onAllocate: () => void }`
+  - Events out: `onAllocateComplete`
+  - States: idle, processing, review_preview, success, error
+  - Test ids or roles: `data-testid="ef02-smart-allocation-btn"`
+- **Flag:** `FEATURE_EF_02` (default off)
+- **External services:** None
+- **V0 / V1 tests:** Algorithmic test ensuring no animal exceeds 7 shares and no participant is allocated twice; sandbox UI flow test.
+- **V2 check (5 minutes or less):** Navigate to Allocations page, click "Run Smart Allocation", inspect proposed distribution preview, confirm.
+- **Rollback:** Set `FEATURE_EF_02=off`. Allocations table remains intact.
+- **Fallback if unfinished:** Rely entirely on MVP manual allocation.
+- **Effort / UI cost:** M
 
 ## 4. Pipeline
 
 | Feature | Stage (Building / V0 / V1 / Awaiting V2 / V2 passed / Flag on) | Flag state | Evidence |
 |---|---|---|---|
-| EF-XX | Building | off | `docs/VERIFICATION/EF-XX.md` |
+| EF-01 | Backlog | off | `docs/VERIFICATION/EF-01.md` |
+| EF-02 | Backlog | off | `docs/VERIFICATION/EF-02.md` |
 
 Limit: 2 features in `Awaiting V2`.
