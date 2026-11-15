@@ -15,7 +15,7 @@ User value and relevance to the problem, demo impact, feasibility in the time av
 |---|---|---|---|---|---|---|---|
 | EF-01 | Analytics Dashboard | High – gives committee historical trends & live metrics | High – visual charts in demo | High | M | Low | Selected |
 | EF-02 | Smart Allocation Engine | Medium – auto-assigns animal shares with constraints | Medium – shows allocation optimization | Medium | M | Medium | Selected |
-| EF-03 | Financial Intelligence (auto-categorise expenses) | Medium – reduces manual bookkeeping | Medium – displays expense breakdowns | Medium | S | Low | Optional |
+| EF-03 | Financial Intelligence (auto-categorise expenses) | Medium – reduces manual bookkeeping | Medium – displays expense breakdowns | Medium | S | Low | Selected |
 | EF-04 | Operational Intelligence (bottleneck detection) | Medium – highlights slaughter/processing delays | Medium – live warning badges | Medium | S | Low | Optional |
 | EF-05 | Household Intelligence (duplicate detection) | Low – cleans participant records | Low – shows duplicate warnings | High | S | Low | Optional |
 
@@ -69,11 +69,38 @@ Decision values: `Selected`, `Optional`, `Rejected`. Priority: P1 best value, P2
 - **Fallback if unfinished:** Rely entirely on MVP manual allocation.
 - **Effort / UI cost:** M
 
+---
+
+### EF-03: Financial Intelligence
+- **Priority / status:** P2 · Selected
+- **Problem and target user:** Committee accountants and volunteers face tedious manual bookkeeping and reconciliation errors across participant collections, payment installments, and operational expenses.
+- **Why it is beyond the MVP:** The MVP provides basic payment record keeping; this feature adds heuristic expense auto-categorisation, automated financial anomaly detection (duplicate references/amounts, orphan payments, allocated underpayments), and comprehensive revenue-expense reconciliation summaries.
+- **Expected behavior and acceptance criteria:** Admin dashboard renders financial reconciliation overview (revenues, expenses, surplus/deficit) and anomaly alert badges; auto-categorises expenses across 8 standard categories with confidence scores.
+- **Backend extension:**
+  - `GET /api/ext/EF-03/summary?programmeId=:id` -> financial reconciliation overview and category breakdown.
+  - `POST /api/ext/EF-03/categorise` -> auto-categorises operational expenses with confidence scoring.
+  - `GET /api/ext/EF-03/anomalies?programmeId=:id` -> flags payment discrepancies, duplicate records, and orphan contributions.
+  - `GET /api/ext/EF-03/categories` -> supported operational expense categories.
+- **UI component:**
+  - Slot: `financial-intelligence-slot` (from `docs/FRONTEND-NEEDS.md`)
+  - Props in: `{ programmeId: number, initialSummary?: FinancialSummaryResult, initialAnomalies?: FinancialAnomaly[] }`
+  - Events out: none
+  - States: loading, empty, error, success
+  - Test ids: `data-testid="ef03-financial-intelligence"`
+- **Flag:** `FEATURE_EF_03` (default off)
+- **External services:** None
+- **V0 / V1 tests:** Unit tests for auto-categorisation keywords and anomaly detection algorithms; integration tests for flag gating and fail-closed admin guard.
+- **V2 check (5 minutes or less):** Open Finance Dashboard with `FEATURE_EF_03=on`; inspect metric cards, anomaly alerts, test auto-categoriser form; toggle flag off, slot disappears cleanly.
+- **Rollback:** Set `FEATURE_EF_03=off`. Stateless analytical reads; zero database mutations.
+- **Fallback if unfinished:** Hide slot; dashboard displays standard MVP payment summaries.
+- **Effort / UI cost:** S
+
 ## 4. Pipeline
 
 | Feature | Stage (Building / V0 / V1 / Awaiting V2 / V2 passed / Flag on) | Flag state | Evidence |
 |---|---|---|---|
 | EF-01 | Awaiting Review (V0+V1 passed) | off | `docs/VERIFICATION/EF-01.md` |
 | EF-02 | Awaiting V2 | off | `docs/VERIFICATION/EF-02.md` |
+| EF-03 | Ready for Review (V0+V1 Passed) | off | `docs/VERIFICATION/EF-03.md` |
 
 Limit: 2 features in `Awaiting V2`.

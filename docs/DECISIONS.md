@@ -25,3 +25,9 @@ Append only. Add one entry at the end for each decision about scope, architectur
 - **Decision:** Use the existing API contract's opaque string IDs, ISO 8601 `registrationOpensAt` and `registrationClosesAt`, money as `{ amountMinor, currency }` with INR for the programme, integer grams for distribution, and XLSX/PDF report exports. Distribution states are `draft`, `confirmed`, `packed`, `collected`, and `delivered`, with cancellation handled by the documented committee action. Use method and path to identify endpoints in mocks. Batch allocation remains a proposed additive endpoint.
 - **Reason and trade-offs:** Align backend implementation and frontend mocks with the published draft and use exact integer units for financial and inventory accounting.
 - **Consequences:** M1 can align its notes and mocks to these conventions. The full contract remains subject to its existing reconciliation and change rules.
+
+### D-004: Scope Approval for EF-03 (Financial Intelligence)
+- **Date:** 2026-11-15 · **Status:** Accepted · **Decided by:** M3 with Task Manager directive
+- **Decision:** Advance EF-03 (Financial Intelligence) from Optional to Selected. Implemented as an isolated vertical slice in `enhancements/EF-03-financial-intelligence/` behind `FEATURE_EF_03` (default off), providing automated expense categorisation, financial anomaly detection, and reconciliation summaries via `/api/ext/EF-03/*`.
+- **Reason and trade-offs:** Solves critical committee pain point regarding manual bookkeeping and reconciliation errors across participant payments and operational expenses, with low integration risk and zero MVP schema mutations.
+- **Affected files:** `docs/EXTRA-FEATURE-PLAN.md`, `docs/TASKS/M3.md`, `enhancements/EF-03-financial-intelligence/`
