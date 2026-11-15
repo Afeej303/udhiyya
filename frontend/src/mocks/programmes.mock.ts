@@ -10,14 +10,13 @@
  *   GET  /public/organisations/:orgId/programmes/:year  → PublicProgramme
  *   POST /public/organisations/:orgId/programmes/:year/enquiries → { id: string }
  *
- * Owner: M1 — do not edit M2-owned API-CONTRACT.md.
- * Keep in sync with docs/API-CONTRACT.md payload examples.
+ * Owner: M1 — aligned with docs/API-CONTRACT.md and commit d432451 (D-003).
  *
- * OPEN GAPS (see FRONTEND-NEEDS.md Section 6):
- *   GAP-03 — Public URL design (:orgId vs slug) not confirmed
- *   GAP-05 — amountMinor divisor ASSUMED 100 (paise) — AWAITING M2 CONFIRMATION
- *   GAP-06 — publicContact independently settable per programme (assumed yes)
- *   GAP-08 — Post-publish editable fields not specified
+ * STATUS OF GAPS (FRONTEND-NEEDS.md Section 6):
+ *   GAP-03 — Public URL design (:orgId vs slug) pending M2 confirmation
+ *   GAP-05 — amountMinor confirmed: minor units (paise, ÷100 = ₹) per D-003
+ *   GAP-06 — publicContact confirmed: { email: string } independently set per programme
+ *   GAP-08 — Post-publish editable fields confirmed: updates must preserve required public fields
  */
 
 // ─── Types ────────────────────────────────────────────────────────────────────

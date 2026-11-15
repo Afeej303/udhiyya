@@ -1,18 +1,29 @@
 # Frontend Needs
 
-Status: DRAFT v0 · Owner: M1 · Scope: Organisation Onboarding, Annual Programme Setup, Public Programme Page
-Baseline contract: commit `33a7555` · Last updated: 2026-11-15
+Status: RECONCILED v1 · Owner: M1 · Scope: Organisation Onboarding, Annual Programme Setup, Public Programme Page
+Baseline contract: commit `33a7555` · Field conventions confirmed: Decision `D-003` (commit `d432451`) · Last updated: 2026-11-15
 
-## 1. UI stack and design direction
+## 1. UI stack, design direction, and confirmed conventions
 
-- **Framework:** React 19 + TanStack Router (file-based routing) — to be confirmed with M2 whether TanStack Start (SSR) or plain Vite SPA.
+- **Framework:** React 19 + Vite (Client-side SPA) + TanStack Router (code-based routing tree).
 - **Component library:** shadcn/ui (Radix primitives) + Tailwind CSS v4 with OKLCH design tokens.
 - **Design reference:** `canvas-saas-suite` (commit in that repo). Design is approved; it must not be altered. All screens here port that design into `frontend/`.
 - **Design tokens:** `--lime` (primary), `--coral`, `--cobalt`, `--sun`, `--ink`, `--ink-soft`. Fonts: Bricolage Grotesque (display), Geist (body), Geist Mono.
 - **Icons:** Lucide React.
 - **Forms:** React Hook Form + Zod.
-- **Data fetching:** TanStack Query (`useQuery` / `useMutation`) with the API client described in Section 5.
+- **Data fetching:** TanStack Query (`useQuery` / `useMutation`) with the dual-mode API client described in Section 5.
 - **Toasts:** Sonner.
+
+### Confirmed field conventions (D-003):
+1. **Endpoint Identification:** Identified strictly by HTTP method + path (e.g. `GET /platform/organisations`), never legacy IDs.
+2. **Opaque string IDs:** All entity identifiers (`id`, `orgId`, `programmeId`, `registrationId`, `householdId`) are treated as opaque strings.
+3. **Date fields:** Standard ISO 8601 UTC strings (`registrationOpensAt`, `registrationClosesAt`).
+4. **Money structure:** `{ amountMinor: number, currency: "INR" }` in integer minor units (paise, so `250000 amountMinor = ₹2500.00`).
+5. **Quantity & weight:** Integer grams for all inventory and distribution records (`quantityGrams: number`).
+6. **Distribution lifecycle:** Ordered states: `draft` → `confirmed` → `packed` → `collected` | `delivered`.
+7. **Cancellation action:** Uses the documented committee action (`POST /registrations/:id/decision` with `{ action: "cancel" }` and `POST /distribution/allocations/:id/transition` with `{ action: "cancel" }`).
+8. **Reports & Exports:** Formats supported are strictly `format=xlsx|pdf` (via `GET /reports/:kind/export?format=xlsx|pdf`).
+9. **Batch allocation:** Proposed additive only; not implemented. Single share allocation (`POST /organisations/:orgId/programmes/:programmeId/share-allocations`) is used.
 
 ---
 
@@ -543,19 +554,17 @@ export type PublicProgramme = Omit<Programme, "id" | "organisationId" | "registr
 
 ## 6. Mismatches and open questions for M2
 
-**These must be resolved before CONTRACT FREEZE v1. M1 is raising them now.**
-
-| # | Gap | Description | Required from M2 | Blocking |
+| # | Gap | Description | Resolution / Status | Impact on Frontend |
 |---|---|---|---|---|
-| GAP-01 | Re-send invitation endpoint | SA04 needs to let the Super Admin resend an invitation that is `pending` or `expired`. No re-send endpoint is defined in the contract. | Define endpoint or confirm invitation must be revoked and re-issued. | SA04 screen |
-| GAP-02 | Organisation status transitions via UI | The contract says PATCH can update `status` but does not define which transitions are allowed (e.g., onboarding→active, active→suspended). The frontend needs to know which actions to show for each current status. | Provide a transition table: `{ from, to, label }[]` or confirm the UI should send any status and the backend enforces it. | SA03 edit |
-| GAP-03 | Public URL design | The contract uses `GET /public/organisations/:orgId/programmes/:year` but does not specify how the public-facing URL exposes the org. Using raw `orgId` in a public URL may be undesirable. Does M2 plan an org slug? | Confirm whether a public URL slug is planned, or confirm that `orgId` is acceptable in public URLs. | PUB02–PUB08 routing |
-| GAP-04 | Feature keys list | Contract says PATCH sends "the full set of agreed feature keys" but the agreed keys are not listed in the contract (only in `canvas-saas-suite` prototype). | Confirm the canonical feature key strings (e.g., `"Registration"` vs `"registration"`). Case-sensitivity matters for the PATCH payload. | SA03 feature access |
-| GAP-05 | Money display (amountMinor precision) | Contract uses `amountMinor` as integer (e.g., `250000`). Is this paise (₹2500.00) or rupees times 100? The existing prototype uses `8500` as the full rupee amount. Need to confirm the divisor. | Confirm: `amountMinor / 100 = rupees`? Or some other scale? | ADM02, PUB04 price display |
-| GAP-06 | `publicContact` vs org `contact` | The contract has `contact` on the organisation (private) and `publicContact` on the programme (public). The public page must show programme `publicContact`, not org `contact`. Confirm the committee can set a different public contact per programme (not just inherit the org contact). | Confirm: programme `publicContact` is independently set per programme, not auto-populated from org contact. | PUB08 contact display |
-| GAP-07 | Authentication starter reference | Architecture.md references `docs/frontend-auth.md` (relative path `../../docs/frontend-auth.md`) but this file does not exist in the `udhiyya` repo. M1 needs the auth contract before wiring login/token handling. | Provide or link the frontend auth contract (token shape, refresh flow, error codes). | Login, all protected routes |
-| GAP-08 | Programme PATCH after publish | The contract does not specify which fields can be edited after a programme is published. Can the Committee Admin edit `description`, `guidelines`, or dates after publishing? Or is the programme locked? | Confirm: post-publish editable fields (or confirm all editing is blocked). | ADM02-DETAIL edit state |
-| GAP-09 | `GET /organisations` workspace endpoint | Architecture says the frontend should call `GET /organisations` to get the current user's workspace and org membership. The response shape (org status, membership role) is not specified in the contract. | Provide response shape for `GET /organisations`. | Workspace routing / auth handoff |
+| GAP-01 | Re-send invitation endpoint | SA04 needs to let the Super Admin resend an invitation that is `pending` or `expired`. No separate re-send endpoint in contract. | **Open:** Workaround in UI is revoking and creating a fresh invitation. | SA04 screen |
+| GAP-02 | Organisation status transitions | Status transitions allowed via `PATCH /platform/organisations/:orgId`. | **Resolved (M2 Notes):** Transitions: `onboarding` → `active`, between `active` and `suspended`, or to `closed` from any non-closed state. | SA03 edit & status actions |
+| GAP-03 | Public URL design | `GET /public/organisations/:orgId/programmes/:year` vs public vanity slug. | **Open:** Currently routing with `orgId`. Awaiting confirmation if slug endpoint will be introduced. | PUB02–PUB08 routing |
+| GAP-04 | Feature keys list | Case-sensitivity and list of agreed feature keys. | **Resolved (D-003):** Title Case confirmed: `Registration`, `Households`, `Animals`, `Allocations`, `Finance`, `Distribution`, `Volunteers`, `Reports`. | SA03 feature access |
+| GAP-05 | Money display (amountMinor precision) | Divisor for `amountMinor` (paise vs rupees). | **Resolved (D-003):** Confirmed: `amountMinor` is integer minor units (paise, ÷100 = ₹). | ADM02, PUB04 price display |
+| GAP-06 | `publicContact` vs org `contact` | Programme public contact isolation. | **Resolved (Contract & D-003):** Programme `publicContact` is `{ email: string }`, set independently per programme. | PUB08 contact display |
+| GAP-07 | Authentication starter reference | Supabase Auth Bearer token contract. | **Resolved:** Frontend passes standard Supabase Auth Bearer JWT in `Authorization: Bearer <token>`. | Login, all protected routes |
+| GAP-08 | Programme PATCH after publish | Editable fields after a programme is published. | **Resolved (M2 Notes):** Updates to a published programme must preserve required public fields (`title`, `description`, `guidelines`, `publicContact`, `registrationOpensAt`, `registrationClosesAt`, `price`). | ADM02-DETAIL edit state |
+| GAP-09 | `GET /organisations` workspace endpoint | Response shape for user's accessible workspaces. | **Resolved (M2 Notes):** Returns membership entries with `organization.id`, `name`, `slug`, lowercase `status`, `membershipStatus`, `joinedAt`, `roles`. Route `suspended` and `closed` workspaces to unavailable state. | Workspace routing / auth handoff |
 
 ---
 
@@ -587,10 +596,16 @@ Built early, flag-guarded, renders nothing with flags off.
 
 ## 9. Notes and assumptions
 
-- ASSUMED: `amountMinor` divisor is 100 (paise), so `250000 amountMinor = ₹2500.00`. Awaiting M2 confirmation (GAP-05).
-- ASSUMED: Public URL will use `orgId` directly until M2 confirms slug design (GAP-03).
-- ASSUMED: TanStack Router (not Start/SSR) pending stack decision confirmation from team.
-- ASSUMED: Supabase Auth bearer token is passed in `Authorization` header; token lifecycle (refresh, expiry) follows the starter contract referenced in `docs/ARCHITECTURE.md`. Awaiting `frontend-auth.md` from M2 (GAP-07).
-- PUB05 announcements, PUB06 public aggregates, PUB07 distribution details are deferred — their endpoints are defined in the contract but are out of scope for this iteration.
-- SA01 platform dashboard metrics are deferred (endpoint proposed in contract but SA01 scope not in this iteration).
-- All screens in this document follow the approved design from `canvas-saas-suite`. No new visual design decisions are made here.
+- CONFIRMED (D-003): `amountMinor` divisor is 100 (paise), so `250000 amountMinor = ₹2500.00`.
+- CONFIRMED (D-003): Date fields use ISO 8601 UTC `registrationOpensAt` and `registrationClosesAt`.
+- CONFIRMED (D-003): Integer grams used for all distribution measurements (`quantityGrams`).
+- CONFIRMED (D-003): Distribution states: `draft`, `confirmed`, `packed`, `collected`, `delivered`.
+- CONFIRMED (D-003): Exports use `format=xlsx|pdf` via `GET /reports/:kind/export?format=xlsx|pdf`.
+- CONFIRMED (D-003): Batch allocation is proposed additive only; single allocation is used.
+- CONFIRMED (D-003): Documented committee cancellation action supported for registrations and allocations.
+- ASSUMED: Public URL routes via `orgId` (`/public/organisations/:orgId/programmes/:year`) until M2 confirms vanity slug design (GAP-03).
+- CONFIRMED: Client-side SPA with React 19 + Vite + TanStack Router (code-based tree).
+- CONFIRMED: Supabase Auth Bearer token passed in `Authorization: Bearer <token>` header on all protected calls.
+- PUB05 announcements, PUB06 public aggregates, PUB07 distribution details are deferred — endpoints defined in contract.
+- SA01 platform dashboard metrics are deferred (endpoint proposed in contract).
+- All screens strictly adhere to approved visual design from `canvas-saas-suite`.

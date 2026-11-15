@@ -11,12 +11,12 @@
  *
  * In REAL MODE, functions call the actual API base URL.
  *
- * Owner: M1. Do not add backend logic here — only API surface calls.
+ * Owner: M1. Aligned with docs/API-CONTRACT.md and commit d432451 (D-003).
  *
  * Base URL is read from VITE_API_BASE_URL env var.
- * Auth token is read from Supabase Auth session (pending GAP-07 — frontend-auth.md).
+ * Auth token is read from Supabase Auth session as Authorization: Bearer <token>.
  *
- * Contract baseline: docs/API-CONTRACT.md commit 33a7555
+ * Contract baseline: docs/API-CONTRACT.md commit 33a7555 + D-003 conventions (commit d432451)
  */
 
 import {

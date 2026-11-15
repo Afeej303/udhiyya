@@ -6,14 +6,13 @@
  *   GET /platform/organisations/:orgId → Organisation
  *   GET /platform/organisations/:orgId/invitations → { items: InvitationItem[], nextCursor }
  *
- * Owner: M1 — do not edit M2-owned API-CONTRACT.md.
- * Keep in sync with docs/API-CONTRACT.md payload examples.
+ * Owner: M1 — aligned with docs/API-CONTRACT.md and commit d432451 (D-003).
  *
- * OPEN GAPS (see FRONTEND-NEEDS.md Section 6):
- *   GAP-01 — Re-send invitation endpoint not defined
- *   GAP-02 — Status transition table not provided
- *   GAP-04 — Feature key casing not confirmed (using title-case from canvas-saas-suite prototype)
- *   GAP-07 — frontend-auth.md not yet provided
+ * STATUS OF GAPS (FRONTEND-NEEDS.md Section 6):
+ *   GAP-01 — Re-send invitation endpoint not in contract (revoke & re-invite used)
+ *   GAP-02 — Status transition table confirmed: onboarding -> active, active <-> suspended, non-closed -> closed
+ *   GAP-04 — Feature key casing confirmed: title-case strings per D-003
+ *   GAP-07 — Auth: Supabase Bearer JWT token attached to all protected requests
  */
 
 // ─── Types ────────────────────────────────────────────────────────────────────
