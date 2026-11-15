@@ -98,15 +98,28 @@ export const jwtAdapter: AuthProviderInterface & {
 
       const data: any = await res.json();
       const token = data.accessToken || data.token;
+      let userObj = data.user;
+
+      try {
+        const meRes = await fetch(`${API_BASE}/users/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (meRes.ok) {
+          userObj = await meRes.json();
+        }
+      } catch {
+        // Fall back to login user payload
+      }
+
       const sessionData: NestJsJwtSession = {
         token,
         refreshToken: data.refreshToken || "",
         tokenExpires: Date.now() + 3600 * 1000,
-        user: data.user,
+        user: userObj,
       };
       currentSession = sessionData;
       sessionStorage.setItem("qurbani_jwt_session", JSON.stringify(sessionData));
-      const profile = userToProfile(data.user);
+      const profile = userToProfile(userObj);
       sessionStorage.setItem("qurbani_auth_profile", JSON.stringify(profile));
       return { error: null, profile };
     } catch (err: any) {
