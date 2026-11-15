@@ -32,6 +32,11 @@ const programme = {
   priceMinor: 100,
 };
 const findProgramme = vi.fn();
+const findRegistration = vi.fn().mockResolvedValue(null);
+const countRegistrations = vi.fn().mockResolvedValue(0);
+const createRegistration = vi.fn();
+const findApplicantHousehold = vi.fn();
+const findOption = vi.fn();
 const findOrganisations = vi.fn().mockResolvedValue([]);
 const createOrganisation = vi.fn();
 const createAuditEvent = vi.fn().mockResolvedValue({});
@@ -68,11 +73,20 @@ beforeAll(async () => {
       userRole: { findMany: assignments },
       organizationMember: { findFirst: findMembership },
       programme: { findFirst: findProgramme },
+      registration: { findUnique: findRegistration },
       household: { createMany: importHouseholds },
       organization: { findMany: findOrganisations },
       $transaction: async (work: (tx: object) => Promise<unknown>) =>
         work({
           organization: { create: createOrganisation },
+          programme: { findFirst: findProgramme },
+          applicantHousehold: { findUnique: findApplicantHousehold },
+          participationOption: { findFirst: findOption },
+          registration: {
+            findUnique: findRegistration,
+            count: countRegistrations,
+            create: createRegistration,
+          },
           organizationMember: { create: createMembership },
           auditLog: { create: createAuditEvent },
         }),
@@ -316,4 +330,90 @@ it('imports a valid XLSX workbook through Fastify', async () => {
       },
     ],
   });
+});
+
+it('scopes self-service registration to the authenticated applicant and the active programme', async () => {
+  const client = request(app.getHttpServer());
+  const route = `/organisations/${orgId}/programmes/${programme.id}/me/registration`;
+  await client.get(route).expect(401);
+
+  findProgramme.mockResolvedValueOnce(programme);
+  await client.get(route).set('Authorization', 'Bearer token').expect(404);
+  expect(findProgramme).toHaveBeenLastCalledWith({
+    where: {
+      id: programme.id,
+      organizationId: orgId,
+      status: 'published',
+      organization: { status: 'ACTIVE' },
+    },
+  });
+  expect(findRegistration).toHaveBeenCalledWith(
+    expect.objectContaining({
+      where: {
+        programmeId_applicantId: { programmeId: programme.id, applicantId: id },
+      },
+    }),
+  );
+});
+
+it('checks registration capacity and snapshots the selected option price on submission', async () => {
+  const optionId = 'e90f1181-45e6-4b8d-afb0-67242717dc95';
+  const programmeWithWindow = {
+    ...programme,
+    registrationOpensAt: new Date(0),
+    registrationClosesAt: new Date('9999-01-01T00:00:00Z'),
+  };
+  const submit = () =>
+    request(app.getHttpServer())
+      .post(
+        `/organisations/${orgId}/programmes/${programme.id}/me/registration`,
+      )
+      .set('Authorization', 'Bearer token')
+      .send({ optionId, shares: 2 });
+
+  findProgramme.mockResolvedValueOnce(programmeWithWindow);
+  countRegistrations.mockResolvedValueOnce(programme.registrationLimit);
+  await submit().expect(409);
+  expect(createRegistration).not.toHaveBeenCalled();
+
+  findProgramme.mockResolvedValueOnce(programmeWithWindow);
+  findApplicantHousehold.mockResolvedValueOnce({
+    id,
+    name: 'Example',
+    address: 'Main Street',
+    contactEmail: null,
+    contactPhone: null,
+  });
+  findOption.mockResolvedValueOnce({
+    id: optionId,
+    name: 'Share',
+    priceMinor: 12500,
+    maxShares: 2,
+  });
+  createRegistration.mockImplementationOnce(async ({ data }) => ({
+    ...data,
+    id,
+    status: 'submitted',
+    applicant: { id, name: profile.name, email: profile.email },
+  }));
+
+  await submit()
+    .expect(201)
+    .expect(({ body }) => {
+      expect(body).toMatchObject({
+        status: 'submitted',
+        shares: 2,
+        fee: { amountMinor: 25000, currency: 'INR' },
+      });
+    });
+  expect(createRegistration).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: expect.objectContaining({
+        applicantId: id,
+        programmeId: programme.id,
+        optionId,
+        feeMinor: 25000,
+      }),
+    }),
+  );
 });

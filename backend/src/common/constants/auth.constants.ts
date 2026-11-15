@@ -30,3 +30,5 @@ export const SYSTEM_PROTECTED_ROLE_SLUGS = new Set([
   'org_member',
   'org_viewer',
 ]);
+
+export const OWNER_SCOPED_PROGRAMME_ROUTE = 'ownerScopedProgrammeRoute';

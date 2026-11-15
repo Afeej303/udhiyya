@@ -11,6 +11,7 @@ import { isUUID } from 'class-validator';
 import {
   IS_PUBLIC_KEY,
   ORGANIZATION_HEADER,
+  OWNER_SCOPED_PROGRAMME_ROUTE,
   USE_ORGANIZATION_KEY,
 } from '../constants/auth.constants.js';
 import type { UseOrganizationOptions } from '../decorators/org-context.decorator.js';
@@ -35,6 +36,14 @@ export class OrganizationGuard implements CanActivate {
       context.getClass(),
     ]);
     if (isPublic) {
+      return true;
+    }
+
+    // Owner-scoped routes resolve the active programme and caller-owned records in their service.
+    if (this.reflector.getAllAndOverride<boolean>(OWNER_SCOPED_PROGRAMME_ROUTE, [
+      context.getHandler(),
+      context.getClass(),
+    ])) {
       return true;
     }
 

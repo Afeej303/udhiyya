@@ -79,6 +79,9 @@ model User {
   passwordResetTokens     PasswordResetToken[]
   auditLogs               AuditLog[]               @relation("AuditActor")
 
+  applicantHouseholds ApplicantHousehold[]
+  registrations       Registration[]
+
   @@index([status])
   @@index([deletedAt])
   @@index([activeOrganizationId])
@@ -174,15 +177,15 @@ model UserRole {
 }
 
 model Organization {
-  id          String             @id @default(uuid()) @db.Uuid
-  name        String
-  locality    String?
-  contactEmail String?           @map("contact_email")
-  slug        String             @unique
-  status      OrganizationStatus @default(ACTIVE)
-  createdById String?            @map("created_by_id") @db.Uuid
-  createdAt   DateTime           @default(now()) @map("created_at")
-  updatedAt   DateTime           @updatedAt @map("updated_at")
+  id           String             @id @default(uuid()) @db.Uuid
+  name         String
+  locality     String?
+  contactEmail String?            @map("contact_email")
+  slug         String             @unique
+  status       OrganizationStatus @default(ACTIVE)
+  createdById  String?            @map("created_by_id") @db.Uuid
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
 
   createdBy   User?                    @relation("OrganizationCreator", fields: [createdById], references: [id], onDelete: SetNull)
   activeUsers User[]                   @relation("UserActiveOrganization")
@@ -272,8 +275,8 @@ model Session {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHistory  RefreshTokenHistory[]
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHistory RefreshTokenHistory[]
 
   @@index([userId, revokedAt])
   @@index([familyId])
@@ -300,12 +303,12 @@ model RefreshTokenHistory {
 }
 
 model EmailVerificationToken {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-  tokenHash String    @unique @map("token_hash")
-  expiresAt DateTime  @map("expires_at")
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
   consumedAt DateTime? @map("consumed_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -315,12 +318,12 @@ model EmailVerificationToken {
 }
 
 model PasswordResetToken {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-  tokenHash String    @unique @map("token_hash")
-  expiresAt DateTime  @map("expires_at")
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
   consumedAt DateTime? @map("consumed_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -372,6 +375,10 @@ model Programme {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
+  participationOptions ParticipationOption[]
+  applicantHouseholds  ApplicantHousehold[]
+  registrations        Registration[]
+
   @@unique([organizationId, year])
   @@index([organizationId, id])
   @@map("programmes")
@@ -391,4 +398,71 @@ model Household {
 
   @@index([organizationId, id])
   @@map("households")
+}
+
+enum RegistrationStatus {
+  submitted
+  approved
+  rejected
+  cancelled
+}
+
+model ParticipationOption {
+  id          String  @id @default(uuid()) @db.Uuid
+  programmeId String  @map("programme_id") @db.Uuid
+  name        String
+  priceMinor  Int     @map("price_minor")
+  maxShares   Int     @map("max_shares")
+  active      Boolean @default(true)
+
+  programme     Programme      @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  registrations Registration[]
+
+  @@unique([programmeId, id])
+  @@map("participation_options")
+}
+
+model ApplicantHousehold {
+  id           String  @id @default(uuid()) @db.Uuid
+  programmeId  String  @map("programme_id") @db.Uuid
+  userId       String  @map("user_id") @db.Uuid
+  name         String
+  address      String
+  contactEmail String? @map("contact_email")
+  contactPhone String? @map("contact_phone")
+
+  programme     Programme      @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  registrations Registration[]
+
+  @@unique([programmeId, userId])
+  @@unique([id, programmeId, userId])
+  @@map("applicant_households")
+}
+
+model Registration {
+  id                String             @id @default(uuid()) @db.Uuid
+  programmeId       String             @map("programme_id") @db.Uuid
+  applicantId       String             @map("applicant_id") @db.Uuid
+  householdId       String             @map("household_id") @db.Uuid
+  householdSnapshot Json               @map("household_snapshot")
+  optionId          String             @map("option_id") @db.Uuid
+  optionName        String             @map("option_name")
+  unitPriceMinor    Int                @map("unit_price_minor")
+  feeMinor          Int                @map("fee_minor")
+  shares            Int
+  status            RegistrationStatus @default(submitted)
+  submittedAt       DateTime           @default(now()) @map("submitted_at") @db.Timestamptz(3)
+  decidedAt         DateTime?          @map("decided_at") @db.Timestamptz(3)
+  decisionReason    String?            @map("decision_reason")
+
+  programme Programme           @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  applicant User                @relation(fields: [applicantId], references: [id], onDelete: Restrict)
+  household ApplicantHousehold  @relation(fields: [householdId, programmeId, applicantId], references: [id, programmeId, userId], onDelete: Restrict, onUpdate: Restrict)
+  option    ParticipationOption @relation(fields: [programmeId, optionId], references: [programmeId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([programmeId, applicantId])
+  @@index([programmeId, id])
+  @@index([programmeId, status])
+  @@map("registrations")
 }
