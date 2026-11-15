@@ -16,6 +16,7 @@ import { Button } from "@/components/app/Btn";
 import { useParticipant } from "@/components/app/ParticipantSession";
 import { useDemo } from "@/components/app/DemoStore";
 import { useAuth, type UserRole } from "@/services/auth";
+import { GoogleSignIn } from "@/services/auth/GoogleSignIn";
 import { demoAccounts } from "@/lib/workflow";
 import { toast } from "sonner";
 
@@ -315,6 +316,24 @@ export function LoginPage() {
             </>
           )}
         </Button>
+
+        {mode === "signin" && (
+          <div className="pt-2">
+            <div className="relative my-3 flex items-center justify-center">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-border" />
+              </div>
+              <span className="relative bg-card px-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                or
+              </span>
+            </div>
+            <GoogleSignIn
+              onSuccess={() => {
+                redirectForRole("participant");
+              }}
+            />
+          </div>
+        )}
 
         <div className="flex items-center justify-between text-xs pt-1">
           {mode === "signin" ? (

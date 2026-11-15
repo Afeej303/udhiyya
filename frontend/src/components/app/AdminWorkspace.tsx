@@ -42,6 +42,13 @@ import {
 import { useAuth } from "@/services/auth";
 import { ProgrammeSetupSection } from "./ProgrammeSetupSection";
 import { AnalyticsDashboard } from "@/components/extensions/AnalyticsDashboard";
+import {
+  financeAdapter,
+  registrationAdapter,
+  animalsAdapter,
+  householdsAdapter,
+  distributionAdapter,
+} from "@/services/api";
 const config: Record<
   string,
   {
@@ -285,11 +292,18 @@ export function AdminWorkspace({ section }: { section: string }) {
       status,
       review: reason || `Committee ${status.toLowerCase()} this registration.`,
     });
+    const action = status === "Approved" ? "approve" : status === "Rejected" ? "reject" : "cancel";
+    registrationAdapter
+      .decide(profile?.orgId || "org_demo", "2027", row.id, { action, reason })
+      .catch(() => {});
     toast.success(`Registration ${status.toLowerCase()}`);
     setModal(null);
   }
   function verify(row: Row, status: string) {
     update("payments", row.id, { status });
+    financeAdapter
+      .verifyPayment(profile?.orgId || "org_demo", "2027", row.id, status === "Verified")
+      .catch(() => {});
     toast.success(
       status === "Verified"
         ? "Payment verified. Participant balance and receipt updated."
@@ -308,6 +322,9 @@ export function AdminWorkspace({ section }: { section: string }) {
       occupied: String(Number(g.occupied) + Number(p.shares)),
       participants: [g.participants, p.id].filter(Boolean).join(","),
     });
+    animalsAdapter
+      .allocate(profile?.orgId || "org_demo", "2027", g.id, p.id)
+      .catch(() => {});
     toast.success("Participant allocated to group");
     setModal(null);
   }
@@ -317,6 +334,7 @@ export function AdminWorkspace({ section }: { section: string }) {
       return;
     }
     update("groups", r.id, { status: "Published" });
+    animalsAdapter.createGroup(profile?.orgId || "org_demo", "2027", r).catch(() => {});
     toast.success("Group confirmed and assignment published.");
   }
   function generateAllocations() {

@@ -26,7 +26,9 @@ export function ResetPasswordPage() {
     }
 
     setSubmitting(true);
-    const { error } = await updatePassword(password);
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("hash") || params.get("token") || "";
+    const { error } = await updatePassword(password, token);
     setSubmitting(false);
 
     if (error) {

@@ -21,6 +21,7 @@ import { ProgrammePage } from "./components/app/ProgrammePage";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { ConfirmEmailPage } from "./pages/ConfirmEmailPage";
 import { ProtectedRoute } from "./components/common/ProtectedRoute";
 
 const queryClient = new QueryClient({
@@ -148,6 +149,18 @@ const resetPasswordRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/reset-password",
   component: ResetPasswordPage,
+});
+
+const passwordChangeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/password-change",
+  component: ResetPasswordPage,
+});
+
+const confirmEmailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/confirm-email",
+  component: ConfirmEmailPage,
 });
 
 // ─── Super Admin Routes (SA02–SA04) ─────────────────────────────────────────
@@ -336,6 +349,8 @@ const routeTree = rootRoute.addChildren([
   signupRoute,
   forgotPasswordRoute,
   resetPasswordRoute,
+  passwordChangeRoute,
+  confirmEmailRoute,
   dashboardIndexRoute,
   dashboardSectionRoute,
   volunteerIndexRoute,

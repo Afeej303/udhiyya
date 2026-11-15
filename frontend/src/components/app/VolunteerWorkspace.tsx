@@ -7,6 +7,7 @@ import { PageTitle, Metrics, DataTable, Modal, Status, SelectField, Timeline } f
 import { Button, btn } from "./Btn";
 import { Field } from "./AuthShell";
 import { money, type Row } from "@/lib/workflow";
+import { operationsAdapter } from "@/services/api";
 export function VolunteerWorkspace({ section }: { section: string }) {
   const { account, records, update, add } = useDemo();
   const dept = account?.department || "Processing";
@@ -31,6 +32,9 @@ export function VolunteerWorkspace({ section }: { section: string }) {
   function taskProgress(r: Row) {
     const status = r.status === "Pending" ? "In progress" : "Completed";
     update("tasks", r.id, { status });
+    operationsAdapter
+      .updateTaskProgress("org_demo", "2027", r.id, status)
+      .catch(() => {});
     toast.success(`Task ${status.toLowerCase()}`);
   }
   return (

@@ -5,16 +5,10 @@ import {
   type User,
 } from "@supabase/supabase-js";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { jwtAdapter } from "./auth/jwt.adapter";
+import type { AuthUserProfile, UserRole, RegisterPayload } from "./auth/auth.types";
 
-export type UserRole = "super_admin" | "committee_admin" | "volunteer" | "participant";
-
-export interface AuthUserProfile {
-  id: string;
-  email: string;
-  role: UserRole;
-  orgId?: string;
-  name: string;
-}
+export type { UserRole, AuthUserProfile, RegisterPayload };
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
@@ -26,6 +20,9 @@ export const isSupabaseConfigured =
 
 export const isMockMode =
   import.meta.env.VITE_USE_MOCK_API === "true" || !isSupabaseConfigured;
+
+// Provider selection: 'supabase' (default active) or 'nestjs' (JWT mode ready for cutover)
+export const AUTH_PROVIDER = (import.meta.env.VITE_AUTH_PROVIDER || "supabase").toLowerCase();
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
@@ -39,10 +36,17 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
 
 /**
  * Returns the current Bearer token for NestJS API requests.
- * Uses live Supabase session access_token with automatic refresh,
- * or fallback mock token for development simulation.
+ * Evaluates the active authentication provider:
+ * - In 'nestjs' mode: returns fresh NestJS JWT access token from jwtAdapter
+ * - In 'supabase' mode: returns Supabase session access token (auto-refreshed)
+ * - Fallback: returns mock Bearer token for simulation
  */
 export async function getAuthToken(): Promise<string> {
+  if (AUTH_PROVIDER === "nestjs") {
+    const jwtToken = await jwtAdapter.getAccessToken();
+    if (jwtToken) return jwtToken;
+  }
+
   if (supabase) {
     try {
       const { data } = await supabase.auth.getSession();
@@ -50,7 +54,7 @@ export async function getAuthToken(): Promise<string> {
         return data.session.access_token;
       }
     } catch {
-      // Fallback if session fetch fails
+      // Fallback
     }
   }
 
@@ -66,6 +70,7 @@ interface AuthContextType {
   role: UserRole;
   isConfigured: boolean;
   isMockMode: boolean;
+  activeProvider: string;
   signIn: (email: string, password?: string) => Promise<{ error: Error | null; profile?: AuthUserProfile }>;
   signUp: (
     email: string,
@@ -74,7 +79,7 @@ interface AuthContextType {
   ) => Promise<{ error: Error | null; user?: User | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
-  updatePassword: (password: string) => Promise<{ error: Error | null }>;
+  updatePassword: (password: string, token?: string) => Promise<{ error: Error | null }>;
   switchMockRole: (role: UserRole, orgId?: string) => void;
 }
 
@@ -116,10 +121,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         return JSON.parse(cached);
       } catch {
-        // ignore parse error
+        // ignore
       }
     }
-    // Default mock user profile when initialized
     return {
       id: "usr_super_admin",
       email: "admin@platform.qurbanios.internal",
@@ -130,9 +134,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    if (AUTH_PROVIDER === "nestjs") {
+      jwtAdapter.getMe().then((p) => {
+        if (p) {
+          setProfile(p);
+          sessionStorage.setItem("qurbani_auth_profile", JSON.stringify(p));
+        }
+      });
+      return;
+    }
+
     if (!supabase) return;
 
-    // Check initial active session
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
       setUser(s?.user ?? null);
@@ -143,7 +156,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // Subscribe to auth state updates (sign in, sign out, token refresh, password recovery)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, s) => {
@@ -167,6 +179,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = async (email: string, password = "password") => {
     setLoading(true);
     try {
+      if (AUTH_PROVIDER === "nestjs") {
+        const res = await jwtAdapter.signIn(email, password);
+        if (res.profile) {
+          setProfile(res.profile);
+        }
+        return res;
+      }
+
       if (supabase && isSupabaseConfigured) {
         const { data, error } = await supabase.auth.signInWithPassword({
           email,
@@ -226,6 +246,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ) => {
     setLoading(true);
     try {
+      if (AUTH_PROVIDER === "nestjs") {
+        const names = (metadata?.name || email.split("@")[0]).split(" ");
+        return await jwtAdapter.signUp({
+          email,
+          password,
+          firstName: names[0] || "User",
+          lastName: names.slice(1).join(" ") || "Member",
+          role: metadata?.role,
+          orgId: metadata?.org_id,
+        });
+      }
+
       if (supabase && isSupabaseConfigured) {
         const { data, error } = await supabase.auth.signUp({
           email,
@@ -271,11 +303,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    if (supabase && isSupabaseConfigured) {
+    if (AUTH_PROVIDER === "nestjs") {
+      await jwtAdapter.signOut();
+    } else if (supabase && isSupabaseConfigured) {
       try {
         await supabase.auth.signOut();
       } catch {
-        // ignore sign out error
+        // ignore
       }
     }
     setSession(null);
@@ -286,22 +320,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const resetPassword = async (email: string) => {
+    if (AUTH_PROVIDER === "nestjs") {
+      return await jwtAdapter.resetPassword(email);
+    }
     if (supabase && isSupabaseConfigured) {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
       });
       return { error };
     }
-    // Mock simulation
     return { error: null };
   };
 
-  const updatePassword = async (password: string) => {
+  const updatePassword = async (password: string, token = "") => {
+    if (AUTH_PROVIDER === "nestjs") {
+      return await jwtAdapter.updatePassword(password, token);
+    }
     if (supabase && isSupabaseConfigured) {
       const { error } = await supabase.auth.updateUser({ password });
       return { error };
     }
-    // Mock simulation
     return { error: null };
   };
 
@@ -335,6 +373,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: profile?.role || "participant",
         isConfigured: isSupabaseConfigured,
         isMockMode,
+        activeProvider: AUTH_PROVIDER,
         signIn,
         signUp,
         signOut,
@@ -355,3 +394,5 @@ export function useAuth() {
   }
   return context;
 }
+
+export { jwtAdapter };
