@@ -20,6 +20,7 @@ import { EmailModule } from './email/email.module.js';
 import { HealthModule } from './health/health.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
 import { PermissionsModule } from './permissions/permissions.module.js';
+import { ReportsModule } from './reports/reports.module.js';
 import { CommunicationsModule } from './communications/communications.module.js';
 import { DistributionModule } from './distribution/distribution.module.js';
 import { OperationsModule } from './operations/operations.module.js';
@@ -95,6 +96,7 @@ import { UsersModule } from './users/users.module.js';
     OperationsModule,
     DistributionModule,
     CommunicationsModule,
+    ReportsModule,
     ConditionalModule.registerWhen(
       AuthModule,
       (env) => env.AUTH_MODE !== 'supabase',
