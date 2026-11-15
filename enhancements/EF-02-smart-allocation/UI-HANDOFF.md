@@ -64,8 +64,9 @@ For M1's agent. One page — read it, adapt the view, keep the controller.
 - [ ] Behavior tests pass on the adapted view (see `docs/VERIFICATION/EF-02.md` V2)
 - [ ] `ADAPTED EF-02` ping sent
 
-## Known limitations
+## Known limitations & security invariants
 
+- **Replay rejection (410 Gone):** Replaying a fully committed preview token fails closed with HTTP 410 Gone (`PREVIEW_ALREADY_COMMITTED`). It is not idempotently skipped.
 - The commit step is irreversible at the UI level (allocations persist in the DB). Rolling back requires setting `FEATURE_EF_02=off` — existing allocations remain.
 - The optimizer is greedy (first-fit). It does not guarantee optimal share distribution when animal counts are low.
 - `household_first` policy relies on Prisma ordering; validate sort order against the real DB if behavior differs from the sandbox mock.

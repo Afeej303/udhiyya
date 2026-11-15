@@ -5,7 +5,7 @@ For M1's agent. One page — read it, adapt the view, keep the controller.
 - **Slot:** `analytics-dashboard-slot` (Committee / Admin Dashboard, from `docs/FRONTEND-NEEDS.md`)
 - **Flag:** `FEATURE_EF_01` env var (default `off`; frontend: render null when flag is off)
 - **Controller (do not change; `ASK M3` if it must):** `enhancements/EF-01-analytics/frontend/AnalyticsDashboard.tsx`
-- **View (replace or restyle freely):** The JSX return value inside `AnalyticsDashboard.tsx`
+- **View (replace or restyle freely):** `enhancements/EF-01-analytics/frontend/AnalyticsView.tsx`
 - **Sandbox (mock data, no backend needed):** `enhancements/EF-01-analytics/sandbox/SandboxApp.tsx`
 - **Extension API used:**
   - `GET /api/ext/EF-01/summary?programmeId=:id` — returns aggregated metrics (participants, animal yield, payment progress, share capacity)
