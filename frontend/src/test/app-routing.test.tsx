@@ -8,6 +8,11 @@ describe("App routing", () => {
     expect(matches.at(-1)?.routeId).not.toBe(rootRouteId);
   });
 
+  it("matches super admin portal route", () => {
+    const matches = router.matchRoutes("/super-admin/organisations");
+    expect(matches.at(-1)?.routeId).not.toBe(rootRouteId);
+  });
+
   it("matches admin portal route", () => {
     const matches = router.matchRoutes("/admin/dashboard");
     expect(matches.at(-1)?.routeId).not.toBe(rootRouteId);
@@ -21,5 +26,11 @@ describe("App routing", () => {
   it("matches participant portal route", () => {
     const matches = router.matchRoutes("/participant/overview");
     expect(matches.at(-1)?.routeId).not.toBe(rootRouteId);
+  });
+
+  it("routes legacy /beneficiary through redirect handler", () => {
+    const matches = router.matchRoutes("/beneficiary");
+    expect(matches.at(-1)?.routeId).not.toBe(rootRouteId);
+    expect(matches.at(-1)?.pathname).toBe("/beneficiary");
   });
 });

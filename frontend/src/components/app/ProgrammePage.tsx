@@ -423,7 +423,7 @@ export function ProgrammePage({ section }: { section: PublicSection }) {
                 </p>
                 <div className="mt-6 flex flex-wrap gap-3">
                   <Link to="/login" className={btn({})}>
-                    Beneficiary access
+                    Portal login
                     <ArrowUpRight className="size-4" />
                   </Link>
                   <Button variant="outline" onClick={() => setEnquiry(true)}>

@@ -15,7 +15,6 @@ import { PortalShell } from "./components/app/PortalShell";
 import { SuperAdminWorkspace } from "./components/app/SuperAdminWorkspace";
 import { AdminWorkspace } from "./components/app/AdminWorkspace";
 import { VolunteerWorkspace } from "./components/app/VolunteerWorkspace";
-import { BeneficiaryWorkspace } from "./components/app/BeneficiaryWorkspace";
 import { ParticipantWorkspace } from "./components/app/ParticipantWorkspace";
 import { ProgrammePage } from "./components/app/ProgrammePage";
 import { LandingPage } from "./pages/LandingPage";
@@ -268,27 +267,18 @@ const volunteerSectionRoute = createRoute({
   },
 });
 
-// ─── Beneficiary Routes (BEN01–BEN06) ───────────────────────────────────────
+// ─── Legacy Beneficiary Route Redirects ────────────────────────────────────
 
-const beneficiaryIndexRoute = createRoute({
+const legacyBeneficiaryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/beneficiary",
-  component: () => (
-    <Navigate to="/beneficiary/$section" params={{ section: "dashboard" }} replace />
-  ),
+  component: () => <Navigate to="/login" replace />,
 });
 
-const beneficiarySectionRoute = createRoute({
+const legacyBeneficiarySectionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/beneficiary/$section",
-  component: function BeneficiarySection() {
-    const { section } = beneficiarySectionRoute.useParams();
-    return (
-      <PortalShell kind="beneficiary" section={section}>
-        <BeneficiaryWorkspace key={section} section={section} />
-      </PortalShell>
-    );
-  },
+  component: () => <Navigate to="/login" replace />,
 });
 
 // ─── Participant Routes (PAR01–PAR08) ───────────────────────────────────────
@@ -307,9 +297,11 @@ const participantSectionRoute = createRoute({
   component: function ParticipantSection() {
     const { section } = participantSectionRoute.useParams();
     return (
-      <PortalShell kind="beneficiary" section={section}>
-        <ParticipantWorkspace key={section} section={section} />
-      </PortalShell>
+      <ProtectedRoute allowedRoles={["participant", "committee_admin", "super_admin"]}>
+        <PortalShell kind="participant" section={section}>
+          <ParticipantWorkspace key={section} section={section} />
+        </PortalShell>
+      </ProtectedRoute>
     );
   },
 });
@@ -319,7 +311,7 @@ const dashboardIndexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/dashboard",
   component: () => (
-    <Navigate to="/dashboard/$section" params={{ section: "overview" }} replace />
+    <Navigate to="/participant/$section" params={{ section: "overview" }} replace />
   ),
 });
 
@@ -329,9 +321,7 @@ const dashboardSectionRoute = createRoute({
   component: function DashboardSection() {
     const { section } = dashboardSectionRoute.useParams();
     return (
-      <PortalShell kind="beneficiary" section={section}>
-        <ParticipantWorkspace key={section} section={section} />
-      </PortalShell>
+      <Navigate to="/participant/$section" params={{ section }} replace />
     );
   },
 });
@@ -355,8 +345,8 @@ const routeTree = rootRoute.addChildren([
   dashboardSectionRoute,
   volunteerIndexRoute,
   volunteerSectionRoute,
-  beneficiaryIndexRoute,
-  beneficiarySectionRoute,
+  legacyBeneficiaryRoute,
+  legacyBeneficiarySectionRoute,
   participantIndexRoute,
   participantSectionRoute,
   adminRegistrationDetailRoute,

@@ -149,7 +149,7 @@ export const sample = {
 };
 export type Department = "Slaughter" | "Processing" | "Distribution" | "Finance";
 export type DemoAccount = {
-  role: "Committee" | "Volunteer" | "Beneficiary" | "Super Admin";
+  role: "Committee" | "Volunteer" | "Participant" | "Super Admin";
   name: string;
   department?: Department;
 };
@@ -160,7 +160,7 @@ export const demoAccounts: DemoAccount[] = [
   { role: "Volunteer", name: "Faisal Ali", department: "Slaughter" },
   { role: "Volunteer", name: "Sara Nizar", department: "Distribution" },
   { role: "Volunteer", name: "Nabeel Hassan", department: "Finance" },
-  { role: "Beneficiary", name: "Household QBH-00125" },
+  { role: "Participant", name: "Mohammed Ashraf" },
 ];
 const rawRecords: Record<string, RowInput[]> = {
   households: [

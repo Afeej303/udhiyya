@@ -4,7 +4,6 @@ import {
   ArrowRight,
   ShieldCheck,
   Users,
-  HandHeart,
   UserRound,
   KeyRound,
   Mail,
@@ -223,7 +222,6 @@ export function LoginPage() {
               { name: "Participant", icon: UserRound },
               { name: "Committee", icon: ShieldCheck },
               { name: "Volunteer", icon: Users },
-              { name: "Beneficiary", icon: HandHeart },
               { name: "Super Admin", icon: ShieldCheck },
             ].map((r) => (
               <Button
@@ -231,7 +229,7 @@ export function LoginPage() {
                 type="button"
                 variant={role === r.name ? "ink" : "outline"}
                 size="sm"
-                className={r.name === "Super Admin" ? "col-span-2" : ""}
+                className=""
                 onClick={() => handleRoleSelect(r.name)}
               >
                 <r.icon className="size-4" />

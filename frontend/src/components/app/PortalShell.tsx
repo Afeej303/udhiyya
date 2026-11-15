@@ -91,13 +91,15 @@ export const volunteerNav = [
   { slug: "issues", label: "Issue reporting", icon: AlertCircle },
   { slug: "updates", label: "Updates & profile", icon: UserRound },
 ];
-export const beneficiaryNav = [
-  { slug: "dashboard", label: "My distribution", icon: HandHeart },
-  { slug: "household", label: "Household details", icon: Users },
-  { slug: "allocation", label: "Allocation details", icon: Package },
-  { slug: "collection", label: "Collection schedule", icon: MapPin },
-  { slug: "tracking", label: "Distribution tracking", icon: Activity },
-  { slug: "updates", label: "Updates & support", icon: Bell },
+export const participantNav = [
+  { slug: "overview", label: "Overview", icon: Home },
+  { slug: "registration", label: "My registration", icon: ClipboardList },
+  { slug: "household", label: "Household", icon: Users },
+  { slug: "participation", label: "Participation", icon: ShieldCheck },
+  { slug: "payments", label: "Payments & receipts", icon: CreditCard },
+  { slug: "allocation", label: "Group allocation", icon: Layers },
+  { slug: "collection", label: "My collection", icon: Package },
+  { slug: "updates", label: "Updates", icon: Bell },
 ];
 export const superAdminNav = [
   { slug: "dashboard", label: "Platform dashboard", icon: Home },
@@ -113,7 +115,7 @@ export function PortalShell({
   section,
   children,
 }: {
-  kind: "admin" | "volunteer" | "beneficiary" | "super-admin";
+  kind: "admin" | "volunteer" | "participant" | "super-admin";
   section: string;
   children: ReactNode;
 }) {
@@ -128,7 +130,7 @@ export function PortalShell({
         ? adminNav
         : kind === "volunteer"
           ? volunteerNav
-          : beneficiaryNav;
+          : participantNav;
   const expected =
     kind === "super-admin"
       ? "Super Admin"
@@ -136,7 +138,7 @@ export function PortalShell({
         ? "Committee"
         : kind === "volunteer"
           ? "Volunteer"
-          : "Beneficiary";
+          : "Participant";
 
   // Check role match from either Supabase profile or DemoStore account
   const activeRole =
@@ -147,7 +149,7 @@ export function PortalShell({
         : profile?.role === "volunteer"
           ? "Volunteer"
           : profile?.role === "participant"
-            ? "Beneficiary"
+            ? "Participant"
             : account?.role;
 
   if (!ready)
@@ -211,7 +213,7 @@ export function PortalShell({
                         ? "/admin/$section"
                         : kind === "volunteer"
                           ? "/volunteer/$section"
-                          : "/beneficiary/$section"
+                          : "/participant/$section"
                   }
                   params={{ section: l.slug }}
                   onClick={() => setMenu(false)}
