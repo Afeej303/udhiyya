@@ -204,6 +204,8 @@ export function VolunteerWorkspace({ section }: { section: string }) {
                     { key: "quantity", label: "Quantity kg" },
                     { key: "status", label: "Status" },
                   ]}
+                  search={search}
+                  onSearch={setSearch}
                   onOpen={(r) => open("package", r)}
                 />
               </div>
@@ -657,8 +659,15 @@ export function VolunteerWorkspace({ section }: { section: string }) {
                   if (!handover) return;
                   update("distribution", selected.id, { status: "Collected" });
                   distributionAdapter
-                    .transition("org_demo", "2027", selected.id, { action: "confirm" })
-                    .catch(() => {});
+                    .volunteerHandoff("org_demo", "2027", selected.id, {
+                      outcome: "collected",
+                      recipientProof: ref,
+                    })
+                    .catch(() => {
+                      distributionAdapter
+                        .transition("org_demo", "2027", selected.id, { action: "confirm" })
+                        .catch(() => {});
+                    });
                   toast.success("Collection confirmed after verified handover");
                   setModal(null);
                 }}

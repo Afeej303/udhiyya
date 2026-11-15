@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowRight, Plus, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { useParticipant } from "./ParticipantSession";
@@ -8,7 +8,7 @@ import { PageTitle, Metrics, Timeline, Status, DataTable, Modal, SelectField } f
 import { Button, btn } from "./Btn";
 import { Field } from "./AuthShell";
 import { money, sample, verifiedBalance, type Row } from "@/lib/workflow";
-import { financeAdapter } from "@/services/api";
+import { financeAdapter, registrationAdapter } from "@/services/api";
 export const participantSections = [
   { slug: "registration", label: "My registration" },
   { slug: "household", label: "Household" },
@@ -24,6 +24,46 @@ export function ParticipantWorkspace({ section }: { section: string }) {
   const { records, add } = useDemo();
   const [payment, setPayment] = useState(false);
   const [viewReceipt, setViewReceipt] = useState<Row | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadLiveData() {
+      if (!participant?.reference) return;
+      try {
+        const [livePayments] = await Promise.all([
+          financeAdapter.myPayments("org_demo", "2027"),
+          registrationAdapter.myRegistration("org_demo", "2027"),
+        ]);
+        if (cancelled) return;
+        if (livePayments?.items && Array.isArray(livePayments.items)) {
+          livePayments.items.forEach((p: any) => {
+            if (!records.payments.some((existing) => existing.id === p.id)) {
+              add("payments", {
+                id: p.id,
+                participant: participant.reference || "QOS-2027-001",
+                name: participant.name,
+                amount: String(p.amountMinor ? p.amountMinor / 100 : p.amount || 0),
+                method: p.method || "Cash",
+                date: p.receivedAt?.slice(0, 10) || "2027-05-10",
+                status:
+                  p.status === "verified"
+                    ? "Verified"
+                    : p.status === "rejected"
+                      ? "Rejected"
+                      : "Pending verification",
+              });
+            }
+          });
+        }
+      } catch {
+        // Fall back gracefully to local demo store
+      }
+    }
+    loadLiveData();
+    return () => {
+      cancelled = true;
+    };
+  }, [participant?.reference]);
   if (!participant) return null;
   const reference = participant.reference || "QOS-2027-001";
   const registration = records.participants.find((p) => p.id === reference);

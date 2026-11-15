@@ -98,6 +98,14 @@ export const householdsAdapter = {
     });
   },
 
+  async myHousehold(orgId: string, programmeId: string) {
+    try {
+      return await request<any>(`/organisations/${orgId}/programmes/${programmeId}/me/household`);
+    } catch {
+      return null;
+    }
+  },
+
   async importCsv(orgId: string, file: File) {
     const token = await getAuthToken();
     const formData = new FormData();
@@ -127,6 +135,32 @@ export const registrationAdapter = {
     const qs = query ? `?${new URLSearchParams(query).toString()}` : "";
     try {
       return await request<any>(`/organisations/${orgId}/programmes/${programmeId}/registrations${qs}`);
+    } catch {
+      return null;
+    }
+  },
+
+  async get(orgId: string, programmeId: string, registrationId: string) {
+    try {
+      return await request<any>(
+        `/organisations/${orgId}/programmes/${programmeId}/registrations/${registrationId}`,
+      );
+    } catch {
+      return null;
+    }
+  },
+
+  async myRegistration(orgId: string, programmeId: string) {
+    try {
+      return await request<any>(`/organisations/${orgId}/programmes/${programmeId}/me/registration`);
+    } catch {
+      return null;
+    }
+  },
+
+  async myParticipation(orgId: string, programmeId: string) {
+    try {
+      return await request<any>(`/organisations/${orgId}/programmes/${programmeId}/me/participation`);
     } catch {
       return null;
     }
@@ -182,12 +216,18 @@ export const animalsAdapter = {
     });
   },
 
-  async allocate(orgId: string, programmeId: string, groupId: string, participantId: string) {
+  async allocate(
+    orgId: string,
+    programmeId: string,
+    groupId: string,
+    registrationId: string,
+    shareCount = 1,
+  ) {
     return await request<any>(
-      `/organisations/${orgId}/programmes/${programmeId}/groups/${groupId}/allocate`,
+      `/organisations/${orgId}/programmes/${programmeId}/share-allocations`,
       {
         method: "POST",
-        body: JSON.stringify({ participantId }),
+        body: JSON.stringify({ registrationId, groupId, shareCount }),
       },
     );
   },
@@ -255,12 +295,46 @@ export const financeAdapter = {
     }
   },
 
+  async expenses(orgId: string, programmeId: string) {
+    try {
+      return await request<any>(`/organisations/${orgId}/programmes/${programmeId}/expenses`);
+    } catch {
+      return null;
+    }
+  },
+
+  async createExpense(
+    orgId: string,
+    programmeId: string,
+    data: {
+      categoryId: string;
+      amount: { amountMinor: number; currency: string };
+      description: string;
+      incurredAt: string;
+    },
+  ) {
+    return await request<any>(`/organisations/${orgId}/programmes/${programmeId}/expenses`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
   async categories(orgId: string, programmeId: string) {
     try {
       return await request<any>(`/organisations/${orgId}/programmes/${programmeId}/expense-categories`);
     } catch {
       return null;
     }
+  },
+
+  async createCategory(orgId: string, programmeId: string, name: string) {
+    return await request<any>(
+      `/organisations/${orgId}/programmes/${programmeId}/expense-categories`,
+      {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      },
+    );
   },
 };
 
@@ -436,6 +510,31 @@ export const distributionAdapter = {
       },
     );
   },
+
+  async volunteerQueue(orgId: string, programmeId: string) {
+    try {
+      return await request<any>(
+        `/organisations/${orgId}/programmes/${programmeId}/volunteer/distribution/queue`,
+      );
+    } catch {
+      return null;
+    }
+  },
+
+  async volunteerHandoff(
+    orgId: string,
+    programmeId: string,
+    allocationId: string,
+    data: { outcome: "collected" | "delivered"; recipientProof: string },
+  ) {
+    return await request<any>(
+      `/organisations/${orgId}/programmes/${programmeId}/volunteer/distribution/allocations/${allocationId}/handoff`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    );
+  },
 };
 
 // -----------------------------------------------------------------------------
@@ -450,11 +549,20 @@ export const communicationsAdapter = {
     }
   },
 
-  async createAnnouncement(orgId: string, programmeId: string, data: any) {
+  async createAnnouncement(orgId: string, programmeId: string, data: { title: string; body: string }) {
     return await request<any>(`/organisations/${orgId}/programmes/${programmeId}/announcements`, {
       method: "POST",
       body: JSON.stringify(data),
     });
+  },
+
+  async publishAnnouncement(orgId: string, programmeId: string, id: string) {
+    return await request<any>(
+      `/organisations/${orgId}/programmes/${programmeId}/announcements/${id}/publish`,
+      {
+        method: "POST",
+      },
+    );
   },
 };
 

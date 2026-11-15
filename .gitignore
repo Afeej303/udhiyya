@@ -26,5 +26,6 @@ Thumbs.db
 
 # Logs and temporary files
 *.log
+*.tsbuildinfo
 tmp/
 temp/
