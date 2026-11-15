@@ -13,7 +13,6 @@ import type {
   FinancialSummaryResult,
   FinancialAnomaly,
   CategorisedExpense,
-  ExpenseInput,
 } from '../backend/financial-intelligence.service.ts';
 import {
   FinancialIntelligenceView,
@@ -30,6 +29,7 @@ export interface FinancialIntelligencePanelProps {
   initialAnomalies?: FinancialAnomaly[];
   apiBaseUrl?: string;
   authToken?: string;
+  enabled?: boolean;
   ViewComponent?: React.FC<FinancialIntelligenceViewProps>;
   mockFetch?: (url: string, options?: any) => Promise<{ ok: boolean; status: number; json: () => Promise<any> }>;
 }
@@ -40,19 +40,12 @@ export const FinancialIntelligencePanel: React.FC<FinancialIntelligencePanelProp
   initialAnomalies,
   apiBaseUrl = '/api/ext/EF-03',
   authToken,
+  enabled = true,
   ViewComponent = FinancialIntelligenceView,
   mockFetch,
 }) => {
-  // Feature flag guard (client-side)
-  const isFlagOff =
-    typeof process !== 'undefined' && process.env?.VITE_FEATURE_EF_03 === 'off';
-
-  if (isFlagOff) {
-    return null;
-  }
-
   // -------------------------------------------------------------------------
-  // Controller State
+  // Controller State (All hooks invoked unconditionally at top of component)
   // -------------------------------------------------------------------------
   const [activeTab, setActiveTab] = useState<'overview' | 'anomalies' | 'categoriser'>('overview');
   const [summary, setSummary] = useState<FinancialSummaryResult | null>(initialSummary || null);
@@ -121,11 +114,16 @@ export const FinancialIntelligencePanel: React.FC<FinancialIntelligencePanelProp
     }
   }, [programmeId, fetchApi]);
 
+  // Feature flag check (slot wrapper owns the flag check; evaluated after hook definitions)
+  const isFlagDisabled =
+    enabled === false ||
+    (typeof process !== 'undefined' && process.env?.VITE_FEATURE_EF_03 === 'off');
+
   useEffect(() => {
-    if (!initialSummary) {
+    if (!initialSummary && !isFlagDisabled) {
       loadData();
     }
-  }, [loadData, initialSummary]);
+  }, [loadData, initialSummary, isFlagDisabled]);
 
   const handleCategoriseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,6 +163,11 @@ export const FinancialIntelligencePanel: React.FC<FinancialIntelligencePanelProp
       setCategorising(false);
     }
   };
+
+  // If slot or environment specifies flag is off, or backend returned 403, render null
+  if (isFlagDisabled || disabled) {
+    return null;
+  }
 
   const isEmpty =
     Boolean(summary && summary.totalParticipants === 0 && summary.totalAllocatedShares === 0 && summary.totalExpensesMinor === 0);
