@@ -22,6 +22,11 @@ async function hashPassword(plain: string): Promise<string> {
 }
 
 async function main() {
+  if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_SAMPLE_BOOTSTRAP) {
+    console.error('FATAL: bootstrap-qurbanios contains sample development data and is strictly blocked in production.');
+    process.exit(1);
+  }
+
   console.log('--- Bootstrapping QurbaniOS Persistent Database ---');
 
   // 1. Ensure Organization

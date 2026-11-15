@@ -18,8 +18,7 @@ export const isSupabaseConfigured =
   !supabaseUrl.includes("placeholder") &&
   supabaseUrl.startsWith("http");
 
-export const isMockMode =
-  import.meta.env.VITE_USE_MOCK_API === "true" || !isSupabaseConfigured;
+export const isMockMode = import.meta.env.VITE_USE_MOCK_API === "true";
 
 // Provider selection: 'nestjs' (default active) or 'supabase'
 export const AUTH_PROVIDER = (import.meta.env.VITE_AUTH_PROVIDER || "nestjs").toLowerCase();
@@ -59,7 +58,7 @@ export async function getAuthToken(): Promise<string> {
   }
 
   const stored = sessionStorage.getItem("qurbani_mock_token");
-  return stored || "mock-jwt-token-super-admin";
+  return stored || "";
 }
 
 interface AuthContextType {
