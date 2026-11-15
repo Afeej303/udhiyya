@@ -113,6 +113,7 @@ export interface PrismaLike {
   };
   $transaction?: <T>(fn: (tx: PrismaLike) => Promise<T>) => Promise<T>;
   $executeRawUnsafe?: (query: string, ...values: any[]) => Promise<any>;
+  $queryRawUnsafe?: (query: string, ...values: any[]) => Promise<any>;
 }
 
 // ---------------------------------------------------------------------------
@@ -327,10 +328,17 @@ export class SmartAllocationService {
     // 2. Transaction execution boundary
     const executeCommit = async (tx: PrismaLike): Promise<CommitResult> => {
       // ATOMIC LOCK: Lock animal rows with FOR UPDATE to serialize concurrent commits
-      if (targetAnimalIds.length > 0 && tx.$executeRawUnsafe) {
+      // Fails closed if raw lock execution method is unavailable
+      if (targetAnimalIds.length > 0) {
+        const rawFn = tx.$executeRawUnsafe || tx.$queryRawUnsafe;
+        if (!rawFn) {
+          throw new Error(
+            'CONCURRENCY_ERROR: Database client does not provide row-locking capability ($executeRawUnsafe / $queryRawUnsafe).'
+          );
+        }
         const idList = targetAnimalIds.map((id) => Number(id)).filter((id) => !isNaN(id));
         if (idList.length > 0) {
-          await tx.$executeRawUnsafe(
+          await rawFn(
             `SELECT id FROM "Animal" WHERE id IN (${idList.join(',')}) FOR UPDATE`
           );
         }
@@ -347,6 +355,15 @@ export class SmartAllocationService {
       const allocatedParticipants = new Set(
         currentAllocations.map((a) => a.participantId)
       );
+
+      // Replay rejection: If all proposed participants have already been allocated,
+      // the preview token has already been fully consumed. Fails with 410 Gone.
+      const allAlreadyAllocated = proposedAllocations.every((pa) =>
+        allocatedParticipants.has(pa.participantId)
+      );
+      if (allAlreadyAllocated && proposedAllocations.length > 0) {
+        throw new Error('PREVIEW_ALREADY_COMMITTED');
+      }
 
       // Re-calculate live share counts under the row lock
       const liveSharesPerAnimal = new Map<number, number>();

@@ -189,15 +189,49 @@ describe('SmartAllocationService.commit() Security & Atomic Concurrency', () => 
     ).rejects.toThrow('INVALID_TOKEN');
   });
 
+  test('executes row-level lock SELECT ... FOR UPDATE inside the transaction', async () => {
+    const executedQueries: string[] = [];
+    const prisma = makePrisma([makeParticipant(1)], [makeAnimal(1)]);
+    prisma.$executeRawUnsafe = async (q: string) => {
+      executedQueries.push(q);
+      return 1;
+    };
+
+    const svc = new SmartAllocationService(prisma);
+    const preview = await svc.optimize({ programmeId: 1 });
+    const result = await svc.commit({
+      programmeId: 1,
+      previewToken: preview.previewToken,
+    });
+
+    expect(result.committed).toBe(1);
+    expect(executedQueries.length).toBeGreaterThan(0);
+    expect(executedQueries[0]).toContain('SELECT id FROM "Animal" WHERE id IN (1) FOR UPDATE');
+  });
+
+  test('fails closed with CONCURRENCY_ERROR if database client does not support raw row-locking', async () => {
+    const prisma = makePrisma([makeParticipant(1)], [makeAnimal(1)]);
+    delete prisma.$executeRawUnsafe;
+    delete prisma.$queryRawUnsafe;
+
+    const svc = new SmartAllocationService(prisma);
+    const preview = await svc.optimize({ programmeId: 1 });
+    await expect(
+      svc.commit({
+        programmeId: 1,
+        previewToken: preview.previewToken,
+      })
+    ).rejects.toThrow('CONCURRENCY_ERROR');
+  });
+
   test('ignores caller-supplied proposedAllocations to prevent tampering', async () => {
     const prisma = makePrisma([makeParticipant(1)], [makeAnimal(1)]);
     const svc = new SmartAllocationService(prisma);
     const preview = await svc.optimize({ programmeId: 1 });
 
-    // Malicious caller attempts to inject a forged allocation
     const forgedProposals = [
       {
-        participantId: 9999, // Unauthorized participant
+        participantId: 9999,
         participantName: 'Hacker',
         householdId: 99,
         slot: { animalId: 1, animalTag: 'TAG-1', animalSpecies: 'Cattle', animalWeight: 400, slotIndex: 1 },
@@ -210,28 +244,11 @@ describe('SmartAllocationService.commit() Security & Atomic Concurrency', () => 
       proposedAllocations: forgedProposals,
     });
 
-    // Server committed the genuine stored preview (participant 1), not participant 9999
     expect(result.committed).toBe(1);
     expect(result.programmeId).toBe(1);
   });
 
-  test('skips participants already allocated since preview', async () => {
-    const prisma = makePrisma([makeParticipant(1)], [makeAnimal(1)]);
-    const svc = new SmartAllocationService(prisma);
-    const preview = await svc.optimize({ programmeId: 1 });
-
-    // Simulate participant 1 already allocated before commit
-    prisma.allocation.findMany = async () => [{ participantId: 1, animalId: 1 }] as any;
-
-    const result = await svc.commit({
-      programmeId: 1,
-      previewToken: preview.previewToken,
-    });
-    expect(result.skipped).toBe(1);
-    expect(result.committed).toBe(0);
-  });
-
-  test('preview token replay: participants already committed are skipped idempotently', async () => {
+  test('replaying a fully committed preview token throws PREVIEW_ALREADY_COMMITTED', async () => {
     const allocated: Array<{ participantId: number; animalId: number }> = [];
     const prisma = makePrisma([makeParticipant(1)], [makeAnimal(1)]);
     prisma.allocation.findMany = async () => allocated as any;
@@ -250,13 +267,13 @@ describe('SmartAllocationService.commit() Security & Atomic Concurrency', () => 
     });
     expect(firstResult.committed).toBe(1);
 
-    // Replay attempt with same token idempotently skips already-allocated participants
-    const replayResult = await svc.commit({
-      programmeId: 1,
-      previewToken: preview.previewToken,
-    });
-    expect(replayResult.committed).toBe(0);
-    expect(replayResult.skipped).toBe(1);
+    // Replay attempt fails closed with PREVIEW_ALREADY_COMMITTED
+    await expect(
+      svc.commit({
+        programmeId: 1,
+        previewToken: preview.previewToken,
+      })
+    ).rejects.toThrow('PREVIEW_ALREADY_COMMITTED');
   });
 });
 

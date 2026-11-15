@@ -128,10 +128,10 @@ export class SmartAllocationController {
           .status(HttpStatus.BAD_REQUEST)
           .json({ error: 'Invalid or forged preview token' });
       }
-      if (err.message === 'PREVIEW_EXPIRED') {
+      if (err.message === 'PREVIEW_EXPIRED' || err.message === 'PREVIEW_ALREADY_COMMITTED') {
         return res
           .status(HttpStatus.GONE)
-          .json({ error: 'Preview has expired. Please run optimization again.' });
+          .json({ error: 'Preview has expired or has already been committed.' });
       }
       if (err.message?.startsWith('CONFIG_ERROR')) {
         return res

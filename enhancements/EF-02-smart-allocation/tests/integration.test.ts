@@ -9,6 +9,7 @@ import { SmartAllocationService, PrismaLike } from '../backend/smart-allocation.
 const TEST_SECRET = 'test-hmac-secret-integration-test-key-32-chars!!';
 
 function createMockPrisma(): PrismaLike {
+  const allocated: Array<{ participantId: number; animalId: number }> = [];
   const participants = [
     {
       id: 1,
@@ -29,17 +30,23 @@ function createMockPrisma(): PrismaLike {
       group: { programmeId: 1, species: 'Cattle' },
     },
   ];
-  return {
+  const mock: PrismaLike = {
     programme: { findUnique: async () => ({ id: 1 }) },
     participant: { findMany: async () => participants as any },
     animal: { findMany: async () => animals as any },
     allocation: {
-      createMany: async ({ data }: any) => ({ count: data.length }),
-      findMany: async () => [],
-      count: async () => 0,
+      createMany: async ({ data }: any) => {
+        allocated.push(...data);
+        return { count: data.length };
+      },
+      findMany: async () => allocated as any,
+      count: async () => allocated.length,
     },
-    $transaction: async (fn: any) => fn(createMockPrisma()),
+    $transaction: async (fn: any) => fn(mock),
+    $executeRawUnsafe: async (_q: string) => 1,
+    $queryRawUnsafe: async (_q: string) => [],
   };
+  return mock;
 }
 
 function createMockResponse() {
@@ -157,10 +164,10 @@ describe('EF-02 V1 Integration: Feature Flag & Controller Lifecycle', () => {
     expect(commitRes.statusCode).toBe(200);
     expect(commitRes.body.committed).toBe(1);
 
-    // Replay attempt idempotently skips already-allocated participants
+    // Replay attempt returns 410 Gone as all participants in the preview are already allocated
     const replayRes = createMockResponse();
     await controller.commit({ programmeId: 1, previewToken: token }, replayRes);
-    expect(replayRes.statusCode).toBe(200);
-    expect(replayRes.body.committed).toBe(0);
+    expect(replayRes.statusCode).toBe(410);
+    expect(replayRes.body.error).toContain('Preview has expired or has already been committed');
   });
 });
