@@ -1,0 +1,30 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Dependencies and build outputs
+node_modules/
+dist/
+build/
+coverage/
+.next/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Local/editor/OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
