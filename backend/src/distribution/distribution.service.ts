@@ -137,7 +137,7 @@ export class DistributionService {
     input: BeneficiaryDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       await this.findHousehold(tx, scope, input.householdId);
       const row = await tx.beneficiary.create({
         data: { ...scope, householdId: input.householdId },
@@ -155,7 +155,7 @@ export class DistributionService {
     input: UpdateBeneficiaryDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const existing = await this.findBeneficiary(tx, scope, id);
       if (input.householdId === null)
         throw new BadRequestException('Household is required');
@@ -188,7 +188,7 @@ export class DistributionService {
     input: EligibilityDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const row = await this.findBeneficiary(tx, scope, id);
       const eligibility = input.action === 'approve' ? 'approved' : 'rejected';
       if (row.eligibility === eligibility) return this.beneficiaryView(row);
@@ -226,7 +226,7 @@ export class DistributionService {
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 7 * 86400_000);
     const email = await this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const row = await this.findBeneficiary(tx, scope, id);
       const email = row.household.contactEmail?.toLowerCase();
       if (!email || row.eligibility !== 'approved' || row.userId) {
@@ -258,7 +258,7 @@ export class DistributionService {
     if (!actor.emailVerifiedAt)
       throw new ForbiddenException('Verified email is required');
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, true);
+      await this.registrations.getProgramme(tx, scope, true, true);
       const accessTokenHash = this.digest(token);
       const row = await tx.beneficiary.findFirst({
         where: { programmeId: scope.programmeId, accessTokenHash },
@@ -357,7 +357,7 @@ export class DistributionService {
       );
     }
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const data = {
         participantsEnabled: input.participant.enabled,
         gramsPerShare: input.participant.gramsPerShare,
@@ -409,7 +409,7 @@ export class DistributionService {
     input: DistributionAllocationDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       await this.window(tx, scope, input.collectionWindowId);
       await this.validateRation(tx, scope, input);
       const row = await tx.distributionAllocation.create({
@@ -437,7 +437,7 @@ export class DistributionService {
     input: TransitionAllocationDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const current = await this.findAllocation(tx, scope, id);
       const states = {
         confirm: 'confirmed',
@@ -514,7 +514,7 @@ export class DistributionService {
     input: CollectionWindowDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const data = this.windowData(input);
       const row = await tx.collectionWindow.create({
         data: { ...data, programmeId: scope.programmeId },
@@ -537,7 +537,7 @@ export class DistributionService {
     input: UpdateCollectionWindowDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const current = await this.window(tx, scope, id);
       if (Object.values(input).includes(null))
         throw new BadRequestException(

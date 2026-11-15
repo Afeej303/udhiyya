@@ -86,6 +86,9 @@ model User {
 
   beneficiaryLinks Beneficiary[]
 
+  programmeNotifications UserNotification[]
+  programmeEmailJobs     NotificationEmail[]
+
   @@index([status])
   @@index([deletedAt])
   @@index([activeOrganizationId])
@@ -361,12 +364,14 @@ model AuditLog {
 enum ProgrammeStatus {
   draft
   published
+  closed
 }
 
 model Programme {
   id                   String          @id @default(uuid()) @db.Uuid
   organizationId       String          @map("organization_id") @db.Uuid
   year                 Int
+  closedAt             DateTime?       @map("closed_at") @db.Timestamptz(3)
   title                String
   status               ProgrammeStatus @default(draft)
   description          String?
@@ -393,6 +398,11 @@ model Programme {
   beneficiaries      Beneficiary[]
   distributionPolicy DistributionPolicy?
   collectionWindows  CollectionWindow[]
+
+  announcements          Announcement[]
+  userNotifications      UserNotification[]
+  notificationDispatches NotificationDispatch[]
+  enquiries              ProgrammeEnquiry[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, year])
@@ -855,4 +865,95 @@ model DistributionAllocation {
   @@index([programmeId, registrationId])
   @@index([programmeId, beneficiaryId])
   @@map("distribution_allocations")
+}
+
+enum NotificationAudience {
+  participants
+  beneficiaries
+  volunteers
+  all
+}
+
+enum NotificationEmailState {
+  queued
+  sending
+  sent
+  failed
+  skipped
+}
+
+model Announcement {
+  id          String    @id @default(uuid()) @db.Uuid
+  programmeId String    @map("programme_id") @db.Uuid
+  title       String
+  body        String
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
+
+  programme Programme @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+
+  @@index([programmeId, id])
+  @@map("programme_announcements")
+}
+
+model UserNotification {
+  id          String    @id @default(uuid()) @db.Uuid
+  programmeId String    @map("programme_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  title       String
+  body        String
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  readAt      DateTime? @map("read_at") @db.Timestamptz(3)
+
+  programme Programme @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([programmeId, userId, id])
+  @@map("programme_notifications")
+}
+
+model NotificationDispatch {
+  id          String               @id @default(uuid()) @db.Uuid
+  programmeId String               @map("programme_id") @db.Uuid
+  title       String
+  body        String
+  audience    NotificationAudience
+  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  programme Programme           @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  emails    NotificationEmail[]
+
+  @@index([programmeId, id])
+  @@map("notification_dispatches")
+}
+
+model NotificationEmail {
+  id         String                 @id @default(uuid()) @db.Uuid
+  dispatchId String                 @map("dispatch_id") @db.Uuid
+  userId     String                 @map("user_id") @db.Uuid
+  state      NotificationEmailState @default(queued)
+  attempts   Int                    @default(0)
+  readyAt    DateTime               @default(now()) @map("ready_at") @db.Timestamptz(3)
+  claim      String?                @db.Uuid
+
+  dispatch NotificationDispatch @relation(fields: [dispatchId], references: [id], onDelete: Restrict)
+  user     User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([dispatchId, userId])
+  @@index([state, readyAt])
+  @@map("notification_email_jobs")
+}
+
+model ProgrammeEnquiry {
+  id          String   @id @default(uuid()) @db.Uuid
+  programmeId String   @map("programme_id") @db.Uuid
+  name        String
+  replyEmail  String   @map("reply_email")
+  message     String
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  programme Programme @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+
+  @@index([programmeId, id])
+  @@map("programme_enquiries")
 }

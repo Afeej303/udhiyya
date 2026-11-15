@@ -108,7 +108,7 @@ export class OperationsService {
     input: CreateVolunteerDto,
   ) {
     const volunteer = await this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const row = await tx.volunteer.create({
         data: {
           programmeId: scope.programmeId,
@@ -131,7 +131,7 @@ export class OperationsService {
     input: UpdateVolunteerDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       await this.findVolunteer(tx, scope, id);
       if (input.departments === null || input.active === null)
         throw new BadRequestException('Volunteer fields cannot be null');
@@ -212,7 +212,7 @@ export class OperationsService {
     input: CreateScheduleDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const data = await this.scheduleData(tx, scope, input);
       const row = await tx.schedule.create({ data, select: { id: true } });
       await tx.scheduleMember.createMany({
@@ -234,7 +234,7 @@ export class OperationsService {
     input: UpdateScheduleDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const current = await this.findSchedule(tx, scope, id);
       if (current.status !== 'pending')
         throw new ConflictException('Only pending schedules can be edited');
@@ -320,7 +320,7 @@ export class OperationsService {
 
   async createTask(scope: Scope, actorId: string, input: CreateTaskDto) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const data = await this.taskData(tx, scope, input);
       const row = await tx.volunteerTask.create({ data });
       await this.audit(tx, scope, actorId, 'TASK_CREATED', row.id);
@@ -335,7 +335,7 @@ export class OperationsService {
     input: UpdateTaskDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const current = await this.findTask(tx, scope, id);
       if (current.status !== 'pending')
         throw new ConflictException('Only pending tasks can be edited');
@@ -385,7 +385,7 @@ export class OperationsService {
     input: TaskProgressDto,
   ) {
     return this.serial(async (tx) => {
-      const volunteer = await this.currentVolunteer(tx, scope, actor);
+      const volunteer = await this.currentVolunteer(tx, scope, actor, true);
       const current = await this.assignedTask(tx, scope, volunteer, id);
       this.validateProgress(current.status, input.status);
       if (
@@ -416,7 +416,7 @@ export class OperationsService {
     input: OperationProgressDto,
   ) {
     return this.serial(async (tx) => {
-      const volunteer = await this.currentVolunteer(tx, scope, actor);
+      const volunteer = await this.currentVolunteer(tx, scope, actor, true);
       const current = await this.assignedSchedule(tx, scope, volunteer, id);
       if (
         current.department !== 'slaughter' &&
@@ -480,7 +480,7 @@ export class OperationsService {
     input: CreateIssueDto,
   ) {
     return this.serial(async (tx) => {
-      const volunteer = await this.currentVolunteer(tx, scope, actor);
+      const volunteer = await this.currentVolunteer(tx, scope, actor, true);
       const task = input.taskId
         ? await this.assignedTask(tx, scope, volunteer, input.taskId)
         : null;
@@ -519,7 +519,7 @@ export class OperationsService {
     input: UpdateIssueDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const current = await tx.operationIssue.findFirst({
         where: { id, programmeId: scope.programmeId },
       });
@@ -603,7 +603,7 @@ export class OperationsService {
     input: CashSubmissionDto,
   ) {
     return this.serial(async (tx) => {
-      const volunteer = await this.currentVolunteer(tx, scope, actor);
+      const volunteer = await this.currentVolunteer(tx, scope, actor, true);
       const task = await this.assignedTask(
         tx,
         scope,
@@ -632,8 +632,9 @@ export class OperationsService {
     client: Client,
     scope: Scope,
     actor: AuthenticatedUser,
+    writable = false,
   ) {
-    await this.registrations.getProgramme(client, scope, false);
+    await this.registrations.getProgramme(client, scope, false, writable);
     if (!actor.emailVerifiedAt)
       throw new ForbiddenException('Verified email is required');
     const row = await client.volunteer.findFirst({

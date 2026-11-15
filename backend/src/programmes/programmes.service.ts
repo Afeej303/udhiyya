@@ -37,6 +37,7 @@ function projectCommittee(programme: Programme) {
     id: programme.id,
     organisationId: programme.organizationId,
     registrationLimit: programme.registrationLimit,
+    closedAt: programme.closedAt,
   };
 }
 
@@ -128,6 +129,13 @@ export class ProgrammesService {
     return this.change(organizationId, id, actorId, { status: 'published' });
   }
 
+  async close(organizationId: string, id: string, actorId: string) {
+    return this.change(organizationId, id, actorId, {
+      status: 'closed',
+      closedAt: new Date(),
+    });
+  }
+
   async getPublic(organizationId: string, year: number) {
     const programme = await this.prisma.programme.findFirst({
       where: {
@@ -162,6 +170,12 @@ export class ProgrammesService {
             where: { id, organizationId },
           });
           if (!current) throw new NotFoundException('Programme not found');
+          if (current.status === 'closed') {
+            if (data.status === 'closed') return current;
+            throw new ConflictException('Programme is closed');
+          }
+          if (data.status === 'closed')
+            await this.assertCloseReady(tx, current);
           if (data.status === 'published' && current.status === 'published')
             return current;
 
@@ -179,7 +193,11 @@ export class ProgrammesService {
             tx,
             updated,
             actorId,
-            data.status ? 'PROGRAMME_PUBLISHED' : 'PROGRAMME_UPDATED',
+            data.status === 'closed'
+              ? 'PROGRAMME_CLOSED'
+              : data.status === 'published'
+                ? 'PROGRAMME_PUBLISHED'
+                : 'PROGRAMME_UPDATED',
           );
           return updated;
         },
@@ -196,6 +214,40 @@ export class ProgrammesService {
         );
       }
       throw error;
+    }
+  }
+
+  private async assertCloseReady(
+    tx: Prisma.TransactionClient,
+    programme: Programme,
+  ) {
+    if (programme.status !== 'published')
+      throw new ConflictException('Publish programme before closing');
+    const programmeId = programme.id;
+    const [registrations, payments, operations, allocations] =
+      await Promise.all([
+        tx.registration.count({ where: { programmeId, status: 'submitted' } }),
+        tx.payment.count({ where: { programmeId, status: 'pending' } }),
+        tx.schedule.count({
+          where: {
+            programmeId,
+            department: { in: ['slaughter', 'processing'] },
+            status: { not: 'completed' },
+          },
+        }),
+        tx.distributionAllocation.count({
+          where: {
+            programmeId,
+            status: { in: ['draft', 'confirmed', 'packed'] },
+          },
+        }),
+      ]);
+    if (registrations || payments || operations || allocations) {
+      throw new ConflictException({
+        code: 'PROGRAMME_HAS_PENDING_WORK',
+        message:
+          'Finish registration review, pending payment review, operations and distribution before closing',
+      });
     }
   }
 

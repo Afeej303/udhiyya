@@ -191,10 +191,13 @@ Distribution is implemented locally. The beneficiary email link points to `/bene
 |---|---|---|
 | ADM01 | P GET /dashboard | Committee. Household, registration, animal, finance, volunteer, operations and distribution summaries plus pending actions and recent activity. |
 | ADM16 | P GET/POST /announcements, POST /announcements/:id/publish | Committee. Create with `{ title, body }` → draft. Publish returns publication time. |
-| ADM16 | P POST /notifications | Committee. `{ title, body, audience, channels }` → dispatch ID/status. Backend resolves tenant-scoped recipients. Exact audience values TBD. |
+| ADM16 | P GET /enquiries | Committee. Paged public enquiries include the reply email and message. |
+| ADM16 | P POST /notifications | Committee. `{ title, body, audience, channels }` → dispatch ID/status. Backend resolves tenant-scoped recipients. Audience is one of `participants`, `beneficiaries`, `volunteers`, or `all`. Channels are `in_app` and `email`. |
 | PAR09, BEN07, VOL06 | P GET /me/notifications, PATCH /me/notifications/:id | Recipient. Own notification list. PATCH `{ read: true }` → updated item. |
 | ADM17 | P GET /reports/:kind, GET /reports/:kind/export | Committee with report-specific permissions. Kinds cover registration, participant, animal, allocation, payment, expense and financial summaries. Export accepts `format=xlsx|pdf` and returns a file. |
-| ADM17 | P POST /close | Committee. Returns programme with closure state. Preserve historical records and reject subsequent operational writes. Closure prerequisites and public archive visibility TBD. |
+| ADM17 | P POST /close | Committee. Returns programme with closure state. Preserve historical records and reject subsequent operational writes. Closure requires a published programme with no submitted registrations, pending payments, unfinished slaughter/processing, or draft/confirmed/packed allocations. Closed programmes stay visible to authorised private readers and are absent from anonymous programme pages. |
+
+Communications, public overview, and archive are implemented locally. Only published announcements are visible publicly. Public overview includes animal count and slaughter/processing progress. It excludes private records and financial totals. Notifications use an inbox scoped to the signed-in owner. Payment review and registration decisions create in-app messages in the same transaction. Email dispatch returns queued status when the SMTP channel is enabled and recipients exist. The outbox retries up to three attempts. If SMTP is disabled, email-only dispatch returns 503 and mixed-channel dispatch proceeds with in-app delivery. An ambiguous SMTP acknowledgement may lead to a repeated email. The in-app action remains atomic. Archived writes return 409 for authorised users. Read receipts on existing inbox entries can still be marked.
 
 ### Frontend reconciliation
 

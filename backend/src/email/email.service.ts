@@ -36,6 +36,8 @@ export class SmtpEmailDispatcher implements EmailDispatcher {
         host: this.mailConfig.host,
         port: this.mailConfig.port,
         secure: this.mailConfig.secure,
+        connectionTimeout: 15000,
+        socketTimeout: 60000,
         auth:
           this.mailConfig.user && this.mailConfig.password
             ? { user: this.mailConfig.user, pass: this.mailConfig.password }

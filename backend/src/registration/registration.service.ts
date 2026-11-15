@@ -1,3 +1,4 @@
+import { addUserNotice } from '../communications/user-notice.js';
 import {
   BadRequestException,
   ConflictException,
@@ -65,16 +66,19 @@ export class RegistrationService {
     client: Client,
     scope: Scope,
     published: boolean,
+    writable = false,
   ): Promise<Programme> {
     const programme = await client.programme.findFirst({
       where: {
         id: scope.programmeId,
         organizationId: scope.organizationId,
-        status: published ? 'published' : undefined,
+        status: published ? { in: ['published', 'closed'] } : undefined,
         organization: { status: 'ACTIVE' },
       },
     });
     if (!programme) throw new NotFoundException('Programme not found');
+    if (writable && programme.status === 'closed')
+      throw new ConflictException('Programme is closed');
     return programme;
   }
 
@@ -89,7 +93,7 @@ export class RegistrationService {
 
   async replaceOptions(scope: Scope, input: ReplaceOptionsDto) {
     return this.serial(async (tx) => {
-      await this.getProgramme(tx, scope, false);
+      await this.getProgramme(tx, scope, false, true);
       const options = input.items.map((item) => ({
         id: item.id,
         price: item.price,
@@ -154,7 +158,7 @@ export class RegistrationService {
 
   async saveHousehold(scope: Scope, userId: string, input: CreateHouseholdDto) {
     return this.serial(async (tx) => {
-      await this.getProgramme(tx, scope, true);
+      await this.getProgramme(tx, scope, true, true);
       const name = input.name.trim();
       const address = input.address.trim();
       const phone = input.contact.phone?.trim();
@@ -180,7 +184,7 @@ export class RegistrationService {
 
   async submit(scope: Scope, userId: string, input: SubmitRegistrationDto) {
     return this.serial(async (tx) => {
-      const programme = await this.getProgramme(tx, scope, true);
+      const programme = await this.getProgramme(tx, scope, true, true);
       const now = new Date();
       if (
         !programme.registrationOpensAt ||
@@ -374,7 +378,7 @@ export class RegistrationService {
     dto: RegistrationDecisionDto,
   ) {
     return this.serial(async (tx) => {
-      await this.getProgramme(tx, scope, false);
+      await this.getProgramme(tx, scope, false, true);
       const registration = await this.find(tx, scope, id);
       const nextStatus = {
         approve: 'approved',
@@ -444,6 +448,13 @@ export class RegistrationService {
         id,
         actorId,
         'REGISTRATION_' + status.toUpperCase(),
+      );
+      await addUserNotice(
+        tx,
+        scope.programmeId,
+        registration.applicantId,
+        'Registration updated',
+        'Your programme registration is ' + status + '.',
       );
       return registrationView(changed);
     });

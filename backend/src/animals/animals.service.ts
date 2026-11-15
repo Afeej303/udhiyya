@@ -100,7 +100,7 @@ export class AnimalsService {
 
   async createAnimal(scope: Scope, actorId: string, input: CreateAnimalDto) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const data = this.animalData(input);
       const animal = await tx.animal.create({
         data: {
@@ -129,7 +129,7 @@ export class AnimalsService {
     input: UpdateAnimalDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       await this.findAnimal(tx, scope, id);
       const data = this.animalData(input);
       const allocated = await this.sum(tx, scope, { animalId: id });
@@ -190,7 +190,7 @@ export class AnimalsService {
     input: CreateAnimalGroupDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       await this.findAnimal(tx, scope, input.animalId);
       const group = await tx.animalGroup.create({
         data: {
@@ -219,7 +219,7 @@ export class AnimalsService {
     input: UpdateAnimalGroupDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const existing = await this.findGroup(tx, scope, id);
       const assigned = await this.sum(tx, scope, { groupId: id });
 
@@ -282,7 +282,7 @@ export class AnimalsService {
     input: CreateShareAllocationDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const registration = await tx.registration.findFirst({
         where: { id: input.registrationId, programmeId: scope.programmeId },
       });
@@ -327,7 +327,7 @@ export class AnimalsService {
 
   async release(scope: Scope, id: string, actorId: string) {
     await this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const allocation = await tx.shareAllocation.findFirst({
         where: { id, programmeId: scope.programmeId },
       });

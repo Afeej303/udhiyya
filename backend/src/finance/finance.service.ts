@@ -1,3 +1,4 @@
+import { addUserNotice } from '../communications/user-notice.js';
 import { createHash } from 'node:crypto';
 import {
   BadRequestException,
@@ -127,7 +128,7 @@ export class FinanceService {
     input: CreatePaymentDto,
     cashAssignmentId?: string,
   ) {
-    await this.registrations.getProgramme(tx, scope, false);
+    await this.registrations.getProgramme(tx, scope, false, true);
     const registration = await tx.registration.findFirst({
       where: { id: input.registrationId, programmeId: scope.programmeId },
     });
@@ -194,7 +195,7 @@ export class FinanceService {
     input: VerifyPaymentDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const payment = await tx.payment.findFirst({
         where: { id, programmeId: scope.programmeId },
         include: { registration: true, receipt: true },
@@ -251,6 +252,13 @@ export class FinanceService {
         'PAYMENT_' + status.toUpperCase(),
         'payment',
         id,
+      );
+      await addUserNotice(
+        tx,
+        scope.programmeId,
+        payment.registration.applicantId,
+        'Payment reviewed',
+        'Your programme payment was ' + status + '.',
       );
       return { ...paymentView(updated), receiptId: receipt?.id ?? null };
     });
@@ -336,7 +344,7 @@ export class FinanceService {
     id?: string,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const name = this.requiredText(input.name);
       const data = { name, nameKey: name.toLowerCase() };
       if (id) await this.findCategory(tx, scope, id);
@@ -375,7 +383,7 @@ export class FinanceService {
 
   async createExpense(scope: Scope, actorId: string, input: ExpenseDto) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       await this.findCategory(tx, scope, input.categoryId);
       const expense = await tx.expense.create({
         data: {
@@ -405,7 +413,7 @@ export class FinanceService {
     input: UpdateExpenseDto,
   ) {
     return this.serial(async (tx) => {
-      await this.registrations.getProgramme(tx, scope, false);
+      await this.registrations.getProgramme(tx, scope, false, true);
       const existing = await tx.expense.findFirst({
         where: { id, programmeId: scope.programmeId },
       });

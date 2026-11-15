@@ -70,6 +70,15 @@ export class ProgrammesController {
   ) {
     return this.programmes.publish(organizationId, id, user.id);
   }
+  @Post(':programmeId/close')
+  @HttpCode(200)
+  close(
+    @Param('orgId') organizationId: string,
+    @Param('programmeId', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.programmes.close(organizationId, id, user.id);
+  }
 }
 
 @Controller('public/organisations/:orgId/programmes')

@@ -4,7 +4,8 @@ export type EmailTemplateType =
   | 'password_reset'
   | 'organization_invitation'
   | 'login_notification'
-  | 'beneficiary_access';
+  | 'beneficiary_access'
+  | 'programme_notification';
 
 export interface EmailMessage {
   to: string;

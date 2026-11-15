@@ -10,7 +10,11 @@ it('prevents overpayment and creates one receipt when a pending payment is verif
     registrationId: 'reg-1',
     status: 'pending',
     amountMinor: 3000,
-    registration: { status: 'approved', feeMinor: 10000 },
+    registration: {
+      status: 'approved',
+      feeMinor: 10000,
+      applicantId: 'applicant-1',
+    },
     receipt: null,
   };
   const receiptCreate = vi.fn().mockResolvedValue({ id: 'receipt-1' });
@@ -23,6 +27,7 @@ it('prevents overpayment and creates one receipt when a pending payment is verif
   const tx = {
     payment: { findFirst, aggregate, update },
     receipt: { create: receiptCreate },
+    userNotification: { create: vi.fn().mockResolvedValue({}) },
     auditLog: { create: vi.fn().mockResolvedValue({}) },
   };
   const prisma = {

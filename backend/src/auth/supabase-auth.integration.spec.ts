@@ -343,7 +343,7 @@ it('scopes self-service registration to the authenticated applicant and the acti
     where: {
       id: programme.id,
       organizationId: orgId,
-      status: 'published',
+      status: { in: ['published', 'closed'] },
       organization: { status: 'ACTIVE' },
     },
   });
