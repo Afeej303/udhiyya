@@ -7,7 +7,7 @@ import { renderToString } from 'react-dom/server';
 import { AnalyticsDashboard } from '../EF-01-analytics/frontend/AnalyticsDashboard.tsx';
 import { SmartAllocationPanel } from '../EF-02-smart-allocation/frontend/SmartAllocationPanel.tsx';
 import { FinancialIntelligencePanel } from '../EF-03-financial-intelligence/frontend/FinancialIntelligencePanel.tsx';
-import { OperationalIntelligencePanel } from '../EF-04/OperationalIntelligencePanel.tsx';
+import { OperationalIntelligencePanel } from '../EF-04-operational-intelligence/frontend/OperationalIntelligencePanel.tsx';
 
 describe('M3 UI Component & Slot Integration Test Suite', () => {
 
