@@ -157,9 +157,10 @@ describe('EF-02 V1 Integration: Feature Flag & Controller Lifecycle', () => {
     expect(commitRes.statusCode).toBe(200);
     expect(commitRes.body.committed).toBe(1);
 
-    // Replay attempt fails with 410 Gone (consumed token)
+    // Replay attempt idempotently skips already-allocated participants
     const replayRes = createMockResponse();
     await controller.commit({ programmeId: 1, previewToken: token }, replayRes);
-    expect(replayRes.statusCode).toBe(410);
+    expect(replayRes.statusCode).toBe(200);
+    expect(replayRes.body.committed).toBe(0);
   });
 });

@@ -46,7 +46,8 @@ function makePrisma(
   animals: ReturnType<typeof makeAnimal>[],
   existingAllocations: Array<{ participantId: number; animalId: number }> = [],
 ): PrismaLike {
-  return {
+  const executeRawCalls: string[] = [];
+  const mock: PrismaLike = {
     programme: {
       findUnique: async () => ({ id: 1 }),
     },
@@ -61,8 +62,13 @@ function makePrisma(
       findMany: async () => existingAllocations as any,
       count: async () => existingAllocations.length,
     },
-    $transaction: async (fn: any) => fn(makePrisma(participants, animals, existingAllocations)),
+    $transaction: async (fn: any) => fn(mock),
+    $executeRawUnsafe: async (query: string) => {
+      executeRawCalls.push(query);
+      return 1;
+    },
   };
+  return mock;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,8 +231,15 @@ describe('SmartAllocationService.commit() Security & Atomic Concurrency', () => 
     expect(result.committed).toBe(0);
   });
 
-  test('preview token is single-use (cannot be replayed)', async () => {
+  test('preview token replay: participants already committed are skipped idempotently', async () => {
+    const allocated: Array<{ participantId: number; animalId: number }> = [];
     const prisma = makePrisma([makeParticipant(1)], [makeAnimal(1)]);
+    prisma.allocation.findMany = async () => allocated as any;
+    prisma.allocation.createMany = async ({ data }: any) => {
+      allocated.push(...data);
+      return { count: data.length };
+    };
+
     const svc = new SmartAllocationService(prisma);
     const preview = await svc.optimize({ programmeId: 1 });
 
@@ -237,13 +250,13 @@ describe('SmartAllocationService.commit() Security & Atomic Concurrency', () => 
     });
     expect(firstResult.committed).toBe(1);
 
-    // Second commit with same token fails (token consumed)
-    await expect(
-      svc.commit({
-        programmeId: 1,
-        previewToken: preview.previewToken,
-      })
-    ).rejects.toThrow('PREVIEW_EXPIRED');
+    // Replay attempt with same token idempotently skips already-allocated participants
+    const replayResult = await svc.commit({
+      programmeId: 1,
+      previewToken: preview.previewToken,
+    });
+    expect(replayResult.committed).toBe(0);
+    expect(replayResult.skipped).toBe(1);
   });
 });
 

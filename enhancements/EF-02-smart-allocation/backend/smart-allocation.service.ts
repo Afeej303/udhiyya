@@ -4,17 +4,22 @@
  * Flag: FEATURE_EF_02 (default off)
  *
  * Core rule: each animal has up to SHARES_PER_ANIMAL shares (7 for cattle/buffalo).
- * The optimizer groups unassigned APPROVED participants into available share
- * slots, accounting for existing allocations per animal, respecting household
- * groupings and preferred affinities when policy demands it.
- * The result is a server-signed PREVIEW — nothing is written until /commit
- * echoes back the signed token and the server revalidates it.
  *
- * Security model:
- *   - optimize() stores the preview server-side under a HMAC-signed token.
- *   - commit() IGNORES caller-supplied proposedAllocations and re-fetches the
- *     stored preview by token. This prevents forged/arbitrary allocations.
- *   - Auth is delegated to M2's guard (see integration note in controller).
+ * High-Concurrency & Multi-Worker Architecture:
+ * 1. Stateless Cryptographic Preview Tokens:
+ *    The preview payload (allocations, timestamps, expiration, programmeId)
+ *    is serialized and signed using HMAC-SHA256 (`base64url(payload).hmacSignature`).
+ *    This eliminates process-local in-memory state:
+ *    - Fully shared across load-balanced workers and container restarts.
+ *    - Zero external caching infrastructure (Redis) required.
+ *    - Tamper-proof: client cannot alter any proposed allocation without invalidating HMAC.
+ *
+ * 2. Atomic Row-Level Locking (`FOR UPDATE`):
+ *    During commit(), the database transaction locks the target Animal rows
+ *    (`SELECT id FROM "Animal" WHERE id IN (...) FOR UPDATE`).
+ *    This serializes concurrent commits targeting the same animals, preventing
+ *    race conditions where two transactions read free slots simultaneously and
+ *    oversell beyond the strict 7-share cap.
  */
 
 import * as crypto from 'crypto';
@@ -49,34 +54,24 @@ export interface OptimizeResult {
   programmeId: number;
   policy: string;
   proposedAllocations: ProposedAllocation[];
-  /** Participant IDs that could not be matched (insufficient slots) */
   unmatched: number[];
-  /** Total share slots left unfilled across all animals */
   unfilledSlots: number;
   generatedAt: string;
-  /**
-   * HMAC-signed token binding this preview to the server.
-   * commit() must present this token; the server recomputes the plan from it.
-   * Never trust caller-supplied proposedAllocations in commit().
-   */
+  /** Stateless, cryptographically signed token verifiable by any worker */
   previewToken: string;
 }
 
 export interface CommitRequest {
   programmeId: number;
-  /** Token returned by /optimize; commit validates + re-fetches the plan */
+  /** Token returned by /optimize; commit validates signature and extracts server preview */
   previewToken: string;
-  /**
-   * Caller-supplied list is IGNORED for security.
-   * The server re-derives allocations from the signed token.
-   * Field kept for API symmetry / client convenience only.
-   */
+  /** Client-supplied allocations are ignored to prevent tampering */
   proposedAllocations?: ProposedAllocation[];
 }
 
 export interface CommitResult {
   committed: number;
-  /** Participants already allocated since the preview was generated */
+  /** Participants already allocated since preview was generated */
   skipped: number;
   programmeId: number;
 }
@@ -117,13 +112,14 @@ export interface PrismaLike {
     count: (a: object) => Promise<number>;
   };
   $transaction?: <T>(fn: (tx: PrismaLike) => Promise<T>) => Promise<T>;
+  $executeRawUnsafe?: (query: string, ...values: any[]) => Promise<any>;
 }
 
 // ---------------------------------------------------------------------------
-// Preview Store (Interface & In-Memory with Deployment Constraint Validation)
+// Preview Payload Structure (Stateless Token)
 // ---------------------------------------------------------------------------
 
-export interface StoredPreview {
+export interface PreviewPayload {
   programmeId: number;
   policy: string;
   proposedAllocations: ProposedAllocation[];
@@ -131,110 +127,95 @@ export interface StoredPreview {
   unfilledSlots: number;
   generatedAt: string;
   expiresAt: number; // epoch ms
-}
-
-export interface PreviewStore {
-  get(key: string): Promise<StoredPreview | null>;
-  set(key: string, value: StoredPreview): Promise<void>;
-  delete(key: string): Promise<void>;
-}
-
-/**
- * Default preview store with single-process validation.
- * In a multi-worker deployment, M2's DI configures a Redis / DB-backed store.
- */
-export class MemoryPreviewStore implements PreviewStore {
-  private readonly store = new Map<string, StoredPreview>();
-
-  async get(key: string): Promise<StoredPreview | null> {
-    const item = this.store.get(key);
-    if (!item) return null;
-    if (Date.now() > item.expiresAt) {
-      this.store.delete(key);
-      return null;
-    }
-    return item;
-  }
-
-  async set(key: string, value: StoredPreview): Promise<void> {
-    this.store.set(key, value);
-    this.prune();
-  }
-
-  async delete(key: string): Promise<void> {
-    this.store.delete(key);
-  }
-
-  private prune(): void {
-    const now = Date.now();
-    for (const [key, val] of this.store.entries()) {
-      if (now > val.expiresAt) this.store.delete(key);
-    }
-  }
+  nonce: string;
 }
 
 const PREVIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
-
-// ---------------------------------------------------------------------------
-// Cryptographic Token Signing (Fails closed if secret is missing)
-// ---------------------------------------------------------------------------
-
 const SHARES_PER_ANIMAL = 7;
+
+// ---------------------------------------------------------------------------
+// Cryptographic Token Signing (Stateless, Fails Closed)
+// ---------------------------------------------------------------------------
 
 function getHmacSecret(): string {
   const secret = process.env.EF02_PREVIEW_SECRET;
   if (!secret || secret.trim() === '') {
     throw new Error(
-      'CONFIG_ERROR: EF02_PREVIEW_SECRET environment variable is missing. Refusing to operate with unconfigured or insecure HMAC key.'
+      'CONFIG_ERROR: EF02_PREVIEW_SECRET environment variable is missing. Refusing to operate with unconfigured HMAC key.'
     );
   }
   return secret;
 }
 
-function signToken(payload: string): string {
+function sign(content: string): string {
   const secret = getHmacSecret();
-  return crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  return crypto.createHmac('sha256', secret).update(content).digest('base64url');
 }
 
-function makePreviewToken(programmeId: number, nonce: string): string {
-  const payload = `${programmeId}:${nonce}`;
-  const sig = signToken(payload);
-  return Buffer.from(`${payload}:${sig}`).toString('base64url');
+/**
+ * Creates a stateless signed token.
+ * Format: `<base64url(jsonPayload)>.<hmacSignature>`
+ */
+function createSignedPreviewToken(payload: PreviewPayload): string {
+  const serialized = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = sign(serialized);
+  return `${serialized}.${signature}`;
 }
 
-function verifyPreviewToken(token: string): { programmeId: number; nonce: string } | null {
-  try {
-    const decoded = Buffer.from(token, 'base64url').toString();
-    const parts = decoded.split(':');
-    if (parts.length !== 3) return null;
-    const [programmeIdStr, nonce, sig] = parts;
-    const expected = signToken(`${programmeIdStr}:${nonce}`);
-    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
-    return { programmeId: parseInt(programmeIdStr, 10), nonce };
-  } catch {
-    return null;
+/**
+ * Validates HMAC signature and expiration for a preview token.
+ * Returns decoded PreviewPayload or throws appropriate error.
+ */
+function verifyAndDecodeToken(token: string): PreviewPayload {
+  if (!token || typeof token !== 'string') {
+    throw new Error('INVALID_TOKEN');
   }
+
+  const parts = token.split('.');
+  if (parts.length !== 2) {
+    throw new Error('INVALID_TOKEN');
+  }
+
+  const [serialized, signature] = parts;
+  const expectedSignature = sign(serialized);
+
+  // Timing-safe comparison to prevent timing attacks
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expectedSignature);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    throw new Error('INVALID_TOKEN');
+  }
+
+  let payload: PreviewPayload;
+  try {
+    const jsonStr = Buffer.from(serialized, 'base64url').toString('utf8');
+    payload = JSON.parse(jsonStr);
+  } catch {
+    throw new Error('INVALID_TOKEN');
+  }
+
+  if (Date.now() > payload.expiresAt) {
+    throw new Error('PREVIEW_EXPIRED');
+  }
+
+  return payload;
 }
+
+// ---------------------------------------------------------------------------
+// Service Implementation
+// ---------------------------------------------------------------------------
 
 export class SmartAllocationService {
-  private readonly store: PreviewStore;
-
-  constructor(
-    private readonly prisma: PrismaLike,
-    previewStore?: PreviewStore,
-  ) {
-    this.store = previewStore ?? new MemoryPreviewStore();
-  }
+  constructor(private readonly prisma: PrismaLike) {}
 
   /**
    * Compute a proposed allocation plan without persisting anything.
-   * Accounts for existing per-animal share usage so partially-filled
-   * animals are included and the 7-share cap is always respected.
+   * Generates a stateless, cryptographically signed token.
    */
   async optimize(req: OptimizeRequest): Promise<OptimizeResult> {
     const { programmeId, policy = 'default' } = req;
 
-    // Fail closed early if HMAC key is not configured
+    // Fail closed if HMAC key is not configured
     getHmacSecret();
 
     // 1. Load unallocated APPROVED participants (ordered per policy)
@@ -244,14 +225,13 @@ export class SmartAllocationService {
       orderBy,
     });
 
-    // 2. Load ALL animals for this programme (not just fully unallocated)
-    //    so we can fill remaining share slots on partially used animals.
+    // 2. Load all animals for this programme to check remaining share capacity
     const animals = await this.prisma.animal.findMany({
       where: { group: { programmeId } },
       include: { group: true, _count: { select: { allocation: true } } },
     });
 
-    // 3. Query existing allocation counts per animal to know remaining slots
+    // 3. Query existing allocations per animal
     const existingAllocsByAnimal = await this.prisma.allocation.findMany({
       where: { animal: { group: { programmeId } } } as object,
       select: { animalId: true, participantId: true },
@@ -261,7 +241,7 @@ export class SmartAllocationService {
       usedSharesMap.set(a.animalId, (usedSharesMap.get(a.animalId) ?? 0) + 1);
     }
 
-    // 4. Expand animals into remaining share slots (respecting 7-share cap)
+    // 4. Expand remaining slots per animal (up to 7)
     const slots: ShareSlot[] = [];
     for (const animal of animals) {
       const used = usedSharesMap.get(animal.id) ?? 0;
@@ -272,35 +252,28 @@ export class SmartAllocationService {
           animalTag: animal.tagNumber,
           animalSpecies: animal.group.species,
           animalWeight: animal.weight,
-          slotIndex: used + i, // absolute slot index within the animal
+          slotIndex: used + i,
         });
       }
     }
 
-    // 5. Apply household affinity grouping if policy demands it
-    const orderedSlots = this.applySlotPolicy(slots, policy);
-
-    // 6. Match participants to slots — greedy, one slot per participant,
-    //    with household-affinity preference when policy is household_first.
+    // 5. Match participants to slots with household affinity
     const { proposedAllocations, unmatched } = this.greedyMatch(
       participants,
-      orderedSlots,
+      slots,
       policy,
     );
 
     const assignedSlotKeys = new Set(
       proposedAllocations.map((pa) => `${pa.slot.animalId}:${pa.slot.slotIndex}`)
     );
-    const unfilledSlots = orderedSlots.filter(
+    const unfilledSlots = slots.filter(
       (s) => !assignedSlotKeys.has(`${s.animalId}:${s.slotIndex}`)
     ).length;
 
-    // 7. Sign and store the preview server-side
-    const nonce = crypto.randomBytes(8).toString('hex');
-    const previewToken = makePreviewToken(programmeId, nonce);
+    // 6. Construct stateless cryptographically signed preview token
     const generatedAt = new Date().toISOString();
-
-    const stored: StoredPreview = {
+    const payload: PreviewPayload = {
       programmeId,
       policy,
       proposedAllocations,
@@ -308,63 +281,93 @@ export class SmartAllocationService {
       unfilledSlots,
       generatedAt,
       expiresAt: Date.now() + PREVIEW_TTL_MS,
+      nonce: crypto.randomBytes(12).toString('hex'),
     };
-    await this.store.set(previewToken, stored);
 
-    return { programmeId, policy, proposedAllocations, unmatched, unfilledSlots, generatedAt, previewToken };
+    const previewToken = createSignedPreviewToken(payload);
+
+    return {
+      programmeId,
+      policy,
+      proposedAllocations,
+      unmatched,
+      unfilledSlots,
+      generatedAt,
+      previewToken,
+    };
   }
 
   /**
-   * Persist allocations from a prior optimize() call.
-   * Atomic Transaction Guarantees:
-   *  - Evaluates current share counts inside database transaction ($transaction).
-   *  - Caller-supplied proposedAllocations are strictly IGNORED; server replay only.
-   *  - Prevents race conditions / overselling the 7-share cap on concurrent commits.
+   * Persist allocations from a verified preview token.
+   * Concurrency & Integrity Guarantees:
+   * 1. Stateless signature check: decodes verified proposal, ignores client payload.
+   * 2. Atomic Row Lock (`FOR UPDATE`): locks target animals within the transaction
+   *    to serialize concurrent commits on the same animals.
+   * 3. Live 7-share cap check: verifies live counts inside the transaction boundary.
    */
   async commit(req: CommitRequest): Promise<CommitResult> {
     const { programmeId, previewToken } = req;
 
-    // 1. Verify token signature (fails closed if secret missing or token forged)
-    const tokenData = verifyPreviewToken(previewToken);
-    if (!tokenData || tokenData.programmeId !== programmeId) {
-      throw new Error('INVALID_TOKEN');
+    // 1. Verify token signature and expiration
+    const payload = verifyAndDecodeToken(previewToken);
+    if (payload.programmeId !== programmeId) {
+      throw new Error('PROGRAMME_MISMATCH');
     }
 
-    // 2. Retrieve stored preview from preview store
-    const stored = await this.store.get(previewToken);
-    if (!stored) throw new Error('PREVIEW_EXPIRED');
-    if (stored.programmeId !== programmeId) throw new Error('PROGRAMME_MISMATCH');
+    const { proposedAllocations } = payload;
+    if (proposedAllocations.length === 0) {
+      return { committed: 0, skipped: 0, programmeId };
+    }
 
-    const { proposedAllocations } = stored;
+    // Identify target animal IDs to lock
+    const targetAnimalIds = Array.from(
+      new Set(proposedAllocations.map((p) => p.slot.animalId))
+    );
 
-    // 3. Commit within an isolated transaction (or direct executor if mock)
+    // 2. Transaction execution boundary
     const executeCommit = async (tx: PrismaLike): Promise<CommitResult> => {
-      // Re-read existing allocations inside transaction boundary
-      const existing = await tx.allocation.findMany({
-        where: { participant: { programmeId } } as object,
+      // ATOMIC LOCK: Lock animal rows with FOR UPDATE to serialize concurrent commits
+      if (targetAnimalIds.length > 0 && tx.$executeRawUnsafe) {
+        const idList = targetAnimalIds.map((id) => Number(id)).filter((id) => !isNaN(id));
+        if (idList.length > 0) {
+          await tx.$executeRawUnsafe(
+            `SELECT id FROM "Animal" WHERE id IN (${idList.join(',')}) FOR UPDATE`
+          );
+        }
+      }
+
+      // Re-read current allocations for these animals INSIDE the lock
+      const currentAllocations = await tx.allocation.findMany({
+        where: {
+          participant: { programmeId },
+        } as object,
         select: { participantId: true, animalId: true },
       });
-      const allocatedParticipants = new Set(existing.map((a) => a.participantId));
 
-      // Build live share count map within transaction
+      const allocatedParticipants = new Set(
+        currentAllocations.map((a) => a.participantId)
+      );
+
+      // Re-calculate live share counts under the row lock
       const liveSharesPerAnimal = new Map<number, number>();
-      for (const a of existing) {
+      for (const a of currentAllocations) {
         liveSharesPerAnimal.set(a.animalId, (liveSharesPerAnimal.get(a.animalId) ?? 0) + 1);
       }
 
-      // Filter and enforce the strict 7-share cap atomically
+      // Filter allocations strictly adhering to the 7-share limit
       const toCommit = proposedAllocations.filter((pa) => {
         if (allocatedParticipants.has(pa.participantId)) return false;
-        const current = liveSharesPerAnimal.get(pa.slot.animalId) ?? 0;
-        if (current >= SHARES_PER_ANIMAL) return false;
-        liveSharesPerAnimal.set(pa.slot.animalId, current + 1);
+        const currentCount = liveSharesPerAnimal.get(pa.slot.animalId) ?? 0;
+        if (currentCount >= SHARES_PER_ANIMAL) return false;
+
+        // Reserve slot in live count
+        liveSharesPerAnimal.set(pa.slot.animalId, currentCount + 1);
+        allocatedParticipants.add(pa.participantId);
         return true;
       });
 
       const skipped = proposedAllocations.length - toCommit.length;
-
       if (toCommit.length === 0) {
-        await this.store.delete(previewToken);
         return { committed: 0, skipped, programmeId };
       }
 
@@ -379,9 +382,6 @@ export class SmartAllocationService {
         skipDuplicates: true,
       });
 
-      // Invalidate preview token on successful commit (single-use guarantee)
-      await this.store.delete(previewToken);
-
       return { committed: result.count, skipped, programmeId };
     };
 
@@ -392,7 +392,7 @@ export class SmartAllocationService {
   }
 
   // ---------------------------------------------------------------------------
-  // Private helpers
+  // Private Helpers
   // ---------------------------------------------------------------------------
 
   private participantOrderBy(policy: string): object | object[] {
@@ -406,22 +406,6 @@ export class SmartAllocationService {
     }
   }
 
-  /**
-   * Reorder slots to support household affinity:
-   * When policy is 'household_first', group consecutive slots by animal so
-   * that household members filling the same animal land adjacent slots.
-   * For other policies keep natural order (animal order from DB).
-   */
-  private applySlotPolicy(slots: ShareSlot[], policy: string): ShareSlot[] {
-    if (policy !== 'household_first') return slots;
-    // Keep slots in animal order (already grouped by animal from expand step)
-    return slots;
-  }
-
-  /**
-   * Greedy matching. For 'household_first', attempts to assign members of the
-   * same household to the same animal (same animalId slots) before moving on.
-   */
   private greedyMatch(
     participants: Array<{ id: number; name: string; householdId: number }>,
     slots: ShareSlot[],
@@ -431,7 +415,6 @@ export class SmartAllocationService {
     const unmatched: number[] = [];
 
     if (policy === 'household_first') {
-      // Build per-animal slot queues
       const animalSlots = new Map<number, ShareSlot[]>();
       for (const slot of slots) {
         if (!animalSlots.has(slot.animalId)) animalSlots.set(slot.animalId, []);
@@ -442,7 +425,6 @@ export class SmartAllocationService {
       let currentAnimalIdx = 0;
       for (const participant of participants) {
         let assigned = false;
-        // Try current animal first (keep household together)
         for (let attempt = 0; attempt < animalQueue.length; attempt++) {
           const idx = (currentAnimalIdx + attempt) % animalQueue.length;
           const animalId = animalQueue[idx];
@@ -455,7 +437,6 @@ export class SmartAllocationService {
               householdId: participant.householdId,
               slot,
             });
-            // Stay on this animal for the next participant (household grouping)
             if (slotsForAnimal.length === 0) {
               animalQueue.splice(idx, 1);
               currentAnimalIdx = idx % Math.max(animalQueue.length, 1);
@@ -469,7 +450,6 @@ export class SmartAllocationService {
         if (!assigned) unmatched.push(participant.id);
       }
     } else {
-      // Simple FIFO queue
       const slotQueue = [...slots];
       for (const participant of participants) {
         if (slotQueue.length === 0) {
@@ -488,11 +468,5 @@ export class SmartAllocationService {
 
     return { proposedAllocations, unmatched };
   }
-
-  private pruneExpiredPreviews(): void {
-    const now = Date.now();
-    for (const [key, val] of previewStore.entries()) {
-      if (now > val.expiresAt) previewStore.delete(key);
-    }
-  }
 }
+
