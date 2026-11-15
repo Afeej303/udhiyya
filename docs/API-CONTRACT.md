@@ -60,7 +60,13 @@ Draft fields other than year and title may be null. Year and organisation identi
 
 ### Programme implementation notes
 
-The six programme routes in the table are implemented for local verification. The remaining onboarding routes are pending. The programme API trims title whitespace and requires a non-blank title of at most 200 characters. It accepts years 1900–9999 and limits description and guidelines to 10,000 characters each. Public contact uses the email object shown in the example. Date inputs require a timezone offset or UTC designator. Registration limits and amounts must fit a signed 32-bit integer. Programme pagination defaults to 25 and caps at 100. Publishing an already published programme returns its current representation. Updates to a published programme must preserve its required public fields.
+The six programme routes in the table are implemented for local verification. The platform organisation directory, lifecycle, invitations, and committee workspace discovery are also implemented for local verification. The programme API trims title whitespace and requires a non-blank title of at most 200 characters. It accepts years 1900–9999 and limits description and guidelines to 10,000 characters each. Public contact uses the email object shown in the example. Date inputs require a timezone offset or UTC designator. Registration limits and amounts must fit a signed 32-bit integer. Programme pagination defaults to 25 and caps at 100. Publishing an already published programme returns its current representation. Updates to a published programme must preserve its required public fields.
+
+### Onboarding implementation notes
+
+Creation requires a non-blank organisation name and locality and a private contact email. Names and locality allow up to 200 characters. Platform directory search matches organisation names case-insensitively. Organisations move from onboarding to active, between active and suspended, or to closed from any non-closed state. Closure retains records. The platform actor receives no committee membership when creating an organisation.
+
+Invitation creation requires a non-blank recipient name of at most 200 characters and a valid email. The email is queued through the starter mail service. The signed-in recipient must verify the invited email address before acceptance. Accepting during onboarding creates membership, and committee programme access opens after activation. Workspace discovery returns membership entries with `organization.id`, `name`, `slug`, and lowercase `status`, plus `membershipStatus`, `joinedAt`, and `roles`. Route suspended and closed workspaces to the unavailable state. Expired, revoked and used invitations cannot grant membership.
 
 ## Errors and UI behavior
 

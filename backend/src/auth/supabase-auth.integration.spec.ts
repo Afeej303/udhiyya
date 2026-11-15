@@ -31,6 +31,10 @@ const programme = {
   priceMinor: 100,
 };
 const findProgramme = vi.fn();
+const findOrganisations = vi.fn().mockResolvedValue([]);
+const createOrganisation = vi.fn();
+const createAuditEvent = vi.fn().mockResolvedValue({});
+const createMembership = vi.fn();
 const findMembership = vi.fn().mockResolvedValue(null);
 let app: NestFastifyApplication;
 
@@ -62,6 +66,13 @@ beforeAll(async () => {
       userRole: { findMany: assignments },
       organizationMember: { findFirst: findMembership },
       programme: { findFirst: findProgramme },
+      organization: { findMany: findOrganisations },
+      $transaction: async (work: (tx: object) => Promise<unknown>) =>
+        work({
+          organization: { create: createOrganisation },
+          organizationMember: { create: createMembership },
+          auditLog: { create: createAuditEvent },
+        }),
       role: { findMany: vi.fn().mockResolvedValue([]) },
     })
     .compile();
@@ -167,4 +178,61 @@ it('serves Swagger UI assets with the Fastify adapter', async () => {
       expect(body.paths).toHaveProperty(['/organisations/{orgId}/programmes']);
     });
   await client.get('/docs/swagger-ui.css').expect(200);
+});
+
+it('restricts platform organisation search to the platform super admin', async () => {
+  const client = request(app.getHttpServer());
+  await client
+    .get('/platform/organisations')
+    .set('Authorization', 'Bearer token')
+    .expect(403);
+  expect(findOrganisations).not.toHaveBeenCalled();
+
+  assignments.mockResolvedValueOnce([
+    { role: { slug: 'super_admin', rolePermissions: [] } },
+  ]);
+  await client
+    .get('/platform/organisations?search=Mahallu&limit=2')
+    .set('Authorization', 'Bearer token')
+    .expect(200, { items: [], nextCursor: null });
+
+  expect(findOrganisations).toHaveBeenCalledWith(
+    expect.objectContaining({
+      where: expect.objectContaining({
+        name: { contains: 'Mahallu', mode: 'insensitive' },
+      }),
+      take: 3,
+    }),
+  );
+});
+
+it('creates an onboarding workspace without granting the platform actor committee membership', async () => {
+  assignments.mockResolvedValueOnce([
+    { role: { slug: 'super_admin', rolePermissions: [] } },
+  ]);
+  const payload = {
+    name: 'Example Mahallu',
+    locality: 'Example Town',
+    contact: { email: 'office@example.com' },
+  };
+  createOrganisation.mockResolvedValueOnce({
+    id: orgId,
+    name: payload.name,
+    locality: payload.locality,
+    contactEmail: payload.contact.email,
+    status: 'ONBOARDING',
+  });
+
+  await request(app.getHttpServer())
+    .post('/platform/organisations')
+    .set('Authorization', 'Bearer token')
+    .send(payload)
+    .expect(201, { id: orgId, status: 'onboarding', ...payload });
+
+  expect(createMembership).not.toHaveBeenCalled();
+  expect(createAuditEvent).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: expect.objectContaining({ actorId: id, organizationId: orgId }),
+    }),
+  );
 });

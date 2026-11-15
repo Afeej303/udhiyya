@@ -146,14 +146,14 @@ export class OrganizationsService implements OnModuleInit {
     return created;
   }
 
-  async listMyOrganizations(userId: string) {
+  async listMyOrganizations(userId: string, includeUnavailable = false) {
     this.assertOrganizationsEnabled();
 
     const memberships = await this.prisma.organizationMember.findMany({
       where: {
         userId,
         status: MembershipStatus.ACTIVE,
-        organization: { status: OrganizationStatus.ACTIVE },
+        organization: includeUnavailable ? undefined : { status: OrganizationStatus.ACTIVE },
       },
       include: {
         organization: true,
@@ -336,7 +336,8 @@ export class OrganizationsService implements OnModuleInit {
     organizationId: string,
     dto: InviteMemberDto,
     actor: AuthenticatedUser,
-    orgContext: OrganizationContext,
+    orgContext: Pick<OrganizationContext, 'organizationName' | 'roleSlugs'>,
+    recipientName?: string,
   ) {
     this.assertOrganizationsEnabled();
 
@@ -384,6 +385,7 @@ export class OrganizationsService implements OnModuleInit {
       data: {
         organizationId,
         email: normalizedEmail,
+        recipientName,
         roleId: role.id,
         invitedById: actor.id,
         tokenHash,
@@ -460,10 +462,11 @@ export class OrganizationsService implements OnModuleInit {
       throw new BadRequestException('Only pending invitations can be revoked');
     }
 
-    await this.prisma.organizationInvitation.update({
-      where: { id: invitation.id },
+    const revoked = await this.prisma.organizationInvitation.updateMany({
+      where: { id: invitation.id, status: InvitationStatus.PENDING },
       data: { status: InvitationStatus.REVOKED, respondedAt: new Date() },
     });
+    if (revoked.count !== 1) throw new ConflictException('Invitation has already been processed');
 
     await this.auditService.record({
       actorId: actor.id,
@@ -476,7 +479,7 @@ export class OrganizationsService implements OnModuleInit {
     return { message: 'Invitation revoked' };
   }
 
-  async acceptInvitation(rawToken: string, actor: AuthenticatedUser) {
+  async acceptInvitation(rawToken: string, actor: AuthenticatedUser, expectedRoleSlug?: string) {
     this.assertOrganizationsEnabled();
 
     if (!actor.emailVerifiedAt) {
@@ -497,25 +500,21 @@ export class OrganizationsService implements OnModuleInit {
         },
       });
 
-      if (!invitation) {
+      if (!invitation || (expectedRoleSlug && invitation.role.slug !== expectedRoleSlug)) {
         throw new NotFoundException('Invalid invitation token');
       }
       if (invitation.status !== InvitationStatus.PENDING) {
-        throw new BadRequestException('Invitation has already been responded to or revoked');
+        throw new ConflictException('Invitation has already been responded to or revoked');
       }
       if (invitation.expiresAt <= now) {
-        await tx.organizationInvitation.update({
-          where: { id: invitation.id },
-          data: { status: InvitationStatus.EXPIRED },
-        });
-        throw new BadRequestException('Invitation has expired');
+        throw new ConflictException('Invitation has expired');
       }
       if (invitation.email !== actor.email.toLowerCase()) {
         throw new ForbiddenException(
           'This invitation was issued to a different email address',
         );
       }
-      if (invitation.organization.status !== OrganizationStatus.ACTIVE) {
+      if (invitation.organization.status !== OrganizationStatus.ACTIVE && invitation.organization.status !== OrganizationStatus.ONBOARDING) {
         throw new ForbiddenException('Target organization is not active');
       }
 
