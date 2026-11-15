@@ -33,6 +33,7 @@ import { useState, type ReactNode } from "react";
 import { Logo } from "./Logo";
 import { Button } from "./Btn";
 import { useDemo } from "./DemoStore";
+import { useAuth } from "@/services/auth";
 import { isPlatformOwner } from "@/lib/platform";
 export const adminNav = [
   { group: "Overview", slug: "dashboard", label: "Dashboard", icon: Home },
@@ -117,6 +118,7 @@ export function PortalShell({
   children: ReactNode;
 }) {
   const { account, ready, logout } = useDemo();
+  const { profile, signOut: authSignOut, isConfigured } = useAuth();
   const nav = useNavigate();
   const [menu, setMenu] = useState(false);
   const list =
@@ -135,14 +137,31 @@ export function PortalShell({
         : kind === "volunteer"
           ? "Volunteer"
           : "Beneficiary";
+
+  // Check role match from either Supabase profile or DemoStore account
+  const activeRole =
+    profile?.role === "super_admin"
+      ? "Super Admin"
+      : profile?.role === "committee_admin"
+        ? "Committee"
+        : profile?.role === "volunteer"
+          ? "Volunteer"
+          : profile?.role === "participant"
+            ? "Beneficiary"
+            : account?.role;
+
   if (!ready)
     return (
       <div className="grid min-h-screen place-items-center text-muted-foreground">
         Opening your workspace…
       </div>
     );
-  if (account?.role !== expected || (kind === "super-admin" && !isPlatformOwner(account)))
+
+  if (activeRole !== expected && (!account || account.role !== expected))
     return <Navigate to="/login" replace />;
+
+  const displayName = profile?.name || account?.name || "User";
+  const displayEmail = profile?.email || account?.department || expected;
   return (
     <div className="min-h-screen lg:flex">
       <aside
@@ -208,21 +227,22 @@ export function PortalShell({
         <div className="border-t border-border p-4">
           <div className="flex items-center gap-3">
             <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-bold">
-              {account.name
+              {displayName
                 .split(" ")
                 .map((n) => n[0])
                 .slice(0, 2)
                 .join("")}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-xs font-semibold">{account.name}</p>
-              <p className="text-[10px] text-muted-foreground">{account.department || expected}</p>
+              <p className="truncate text-xs font-semibold">{displayName}</p>
+              <p className="truncate text-[10px] text-muted-foreground">{displayEmail}</p>
             </div>
             <Button
               variant="ghost"
               size="sm"
               aria-label="Log out"
-              onClick={() => {
+              onClick={async () => {
+                await authSignOut();
                 logout();
                 nav({ to: "/login" });
               }}
@@ -254,8 +274,12 @@ export function PortalShell({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-3">
-            <span className="hidden rounded-md bg-sun/20 px-2 py-1 text-[10px] font-medium sm:block">
-              Sample data · not live
+            <span
+              className={`hidden rounded-md px-2 py-1 text-[10px] font-medium sm:block ${
+                isConfigured ? "bg-emerald-500/10 text-emerald-700" : "bg-sun/20 text-foreground"
+              }`}
+            >
+              {isConfigured ? "Live Supabase session" : "Sample data · not live"}
             </span>
             <Link
               to="/"

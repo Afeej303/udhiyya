@@ -12,6 +12,7 @@ import {
   FileText,
   Send,
   Printer,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useDemo } from "./DemoStore";
@@ -40,6 +41,7 @@ import {
 } from "@/lib/workflow";
 import { useAuth } from "@/services/auth";
 import { ProgrammeSetupSection } from "./ProgrammeSetupSection";
+import { AnalyticsDashboard } from "@/components/extensions/AnalyticsDashboard";
 const config: Record<
   string,
   {
@@ -246,6 +248,7 @@ const config: Record<
 };
 export function AdminWorkspace({ section }: { section: string }) {
   const { profile } = useAuth();
+  const isFeatureEf01Enabled = import.meta.env.VITE_FEATURE_EF_01 !== "false";
   const { records, update, add, programmeStatus, setProgrammeStatus, policy, setPolicy } =
     useDemo();
   const [search, setSearch] = useState("");
@@ -498,10 +501,25 @@ export function AdminWorkspace({ section }: { section: string }) {
                 </Button>
               )}
               {section === "groups" && (
-                <Button variant="outline" size="sm" onClick={() => open("allocate")}>
-                  <Plus className="size-4" />
-                  Allocate shares
-                </Button>
+                <>
+                  <div data-testid="smart-allocation-slot" className="inline-block">
+                    <Button
+                      data-testid="ef02-smart-allocation-btn"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        toast.info("Smart Allocation Engine: Auto-pairing 7 participant shares per cattle group.");
+                      }}
+                    >
+                      <Sparkles className="size-4" />
+                      Smart allocation
+                    </Button>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => open("allocate")}>
+                    <Plus className="size-4" />
+                    Allocate shares
+                  </Button>
+                </>
               )}
               {section === "distribution" && (
                 <Button variant="outline" size="sm" onClick={generateAllocations}>
@@ -522,6 +540,11 @@ export function AdminWorkspace({ section }: { section: string }) {
       />
       {section === "dashboard" && (
         <>
+          {isFeatureEf01Enabled && (
+            <div className="mb-8" data-testid="analytics-dashboard-slot">
+              <AnalyticsDashboard programmeId={2027} />
+            </div>
+          )}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-accent/60 px-5 py-4">
             <div className="flex items-center gap-3">
               <span className="grid size-9 place-items-center rounded-full bg-cobalt text-cover-foreground">

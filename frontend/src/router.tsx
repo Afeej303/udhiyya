@@ -14,9 +14,14 @@ import { ParticipantSession } from "./components/app/ParticipantSession";
 import { PortalShell } from "./components/app/PortalShell";
 import { SuperAdminWorkspace } from "./components/app/SuperAdminWorkspace";
 import { AdminWorkspace } from "./components/app/AdminWorkspace";
+import { VolunteerWorkspace } from "./components/app/VolunteerWorkspace";
+import { BeneficiaryWorkspace } from "./components/app/BeneficiaryWorkspace";
+import { ParticipantWorkspace } from "./components/app/ParticipantWorkspace";
 import { ProgrammePage } from "./components/app/ProgrammePage";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { ProtectedRoute } from "./components/common/ProtectedRoute";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -130,31 +135,19 @@ const loginRoute = createRoute({
 const signupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/signup",
-  component: () => <Navigate to="/login" replace />,
+  component: LoginPage,
 });
 
-const dashboardRoute = createRoute({
+const forgotPasswordRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/dashboard",
-  component: () => <Navigate to="/programme" replace />,
+  path: "/forgot-password",
+  component: LoginPage,
 });
 
-const volunteerSectionRoute = createRoute({
+const resetPasswordRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/volunteer/$section",
-  component: () => <Navigate to="/login" replace />,
-});
-
-const beneficiarySectionRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/beneficiary/$section",
-  component: () => <Navigate to="/login" replace />,
-});
-
-const adminRegistrationDetailRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/admin/registrations/$id",
-  component: () => <Navigate to="/admin/$section" params={{ section: "programme-setup" }} replace />,
+  path: "/reset-password",
+  component: ResetPasswordPage,
 });
 
 // ─── Super Admin Routes (SA02–SA04) ─────────────────────────────────────────
@@ -162,7 +155,9 @@ const adminRegistrationDetailRoute = createRoute({
 const superAdminIndexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/super-admin",
-  component: () => <Navigate to="/super-admin/$section" params={{ section: "organisations" }} replace />,
+  component: () => (
+    <Navigate to="/super-admin/$section" params={{ section: "organisations" }} replace />
+  ),
 });
 
 const superAdminSectionRoute = createRoute({
@@ -171,9 +166,11 @@ const superAdminSectionRoute = createRoute({
   component: function SuperAdminSection() {
     const { section } = superAdminSectionRoute.useParams();
     return (
-      <PortalShell kind="super-admin" section={section}>
-        <SuperAdminWorkspace key={section} section={section} />
-      </PortalShell>
+      <ProtectedRoute allowedRoles={["super_admin"]}>
+        <PortalShell kind="super-admin" section={section}>
+          <SuperAdminWorkspace key={section} section={section} />
+        </PortalShell>
+      </ProtectedRoute>
     );
   },
 });
@@ -184,9 +181,11 @@ const superAdminOrgDetailRoute = createRoute({
   component: function SuperAdminOrgDetail() {
     const { id } = superAdminOrgDetailRoute.useParams();
     return (
-      <PortalShell kind="super-admin" section="organisations">
-        <SuperAdminWorkspace key={id} section="details" organisationId={id} />
-      </PortalShell>
+      <ProtectedRoute allowedRoles={["super_admin"]}>
+        <PortalShell kind="super-admin" section="organisations">
+          <SuperAdminWorkspace key={id} section="details" organisationId={id} />
+        </PortalShell>
+      </ProtectedRoute>
     );
   },
 });
@@ -196,7 +195,9 @@ const superAdminOrgDetailRoute = createRoute({
 const adminIndexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin",
-  component: () => <Navigate to="/admin/$section" params={{ section: "programme-setup" }} replace />,
+  component: () => (
+    <Navigate to="/admin/$section" params={{ section: "dashboard" }} replace />
+  ),
 });
 
 const adminSectionRoute = createRoute({
@@ -205,8 +206,118 @@ const adminSectionRoute = createRoute({
   component: function AdminSection() {
     const { section } = adminSectionRoute.useParams();
     return (
-      <PortalShell kind="admin" section={section}>
-        <AdminWorkspace key={section} section={section} />
+      <ProtectedRoute allowedRoles={["committee_admin", "super_admin"]}>
+        <PortalShell kind="admin" section={section}>
+          <AdminWorkspace key={section} section={section} />
+        </PortalShell>
+      </ProtectedRoute>
+    );
+  },
+});
+
+const adminRegistrationDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/registrations/$id",
+  component: function AdminRegDetail() {
+    const { id } = adminRegistrationDetailRoute.useParams();
+    return (
+      <ProtectedRoute allowedRoles={["committee_admin", "super_admin"]}>
+        <PortalShell kind="admin" section="participants">
+          <AdminWorkspace key={id} section="participants" />
+        </PortalShell>
+      </ProtectedRoute>
+    );
+  },
+});
+
+// ─── Volunteer Routes (VOL01–VOL06) ─────────────────────────────────────────
+
+const volunteerIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/volunteer",
+  component: () => (
+    <Navigate to="/volunteer/$section" params={{ section: "home" }} replace />
+  ),
+});
+
+const volunteerSectionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/volunteer/$section",
+  component: function VolunteerSection() {
+    const { section } = volunteerSectionRoute.useParams();
+    return (
+      <ProtectedRoute allowedRoles={["volunteer", "committee_admin", "super_admin"]}>
+        <PortalShell kind="volunteer" section={section}>
+          <VolunteerWorkspace key={section} section={section} />
+        </PortalShell>
+      </ProtectedRoute>
+    );
+  },
+});
+
+// ─── Beneficiary Routes (BEN01–BEN06) ───────────────────────────────────────
+
+const beneficiaryIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/beneficiary",
+  component: () => (
+    <Navigate to="/beneficiary/$section" params={{ section: "dashboard" }} replace />
+  ),
+});
+
+const beneficiarySectionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/beneficiary/$section",
+  component: function BeneficiarySection() {
+    const { section } = beneficiarySectionRoute.useParams();
+    return (
+      <PortalShell kind="beneficiary" section={section}>
+        <BeneficiaryWorkspace key={section} section={section} />
+      </PortalShell>
+    );
+  },
+});
+
+// ─── Participant Routes (PAR01–PAR08) ───────────────────────────────────────
+
+const participantIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/participant",
+  component: () => (
+    <Navigate to="/participant/$section" params={{ section: "overview" }} replace />
+  ),
+});
+
+const participantSectionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/participant/$section",
+  component: function ParticipantSection() {
+    const { section } = participantSectionRoute.useParams();
+    return (
+      <PortalShell kind="beneficiary" section={section}>
+        <ParticipantWorkspace key={section} section={section} />
+      </PortalShell>
+    );
+  },
+});
+
+// Legacy / alias dashboard route for participant space
+const dashboardIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/dashboard",
+  component: () => (
+    <Navigate to="/dashboard/$section" params={{ section: "overview" }} replace />
+  ),
+});
+
+const dashboardSectionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/dashboard/$section",
+  component: function DashboardSection() {
+    const { section } = dashboardSectionRoute.useParams();
+    return (
+      <PortalShell kind="beneficiary" section={section}>
+        <ParticipantWorkspace key={section} section={section} />
       </PortalShell>
     );
   },
@@ -223,9 +334,16 @@ const routeTree = rootRoute.addChildren([
   distributionRoute,
   loginRoute,
   signupRoute,
-  dashboardRoute,
+  forgotPasswordRoute,
+  resetPasswordRoute,
+  dashboardIndexRoute,
+  dashboardSectionRoute,
+  volunteerIndexRoute,
   volunteerSectionRoute,
+  beneficiaryIndexRoute,
   beneficiarySectionRoute,
+  participantIndexRoute,
+  participantSectionRoute,
   adminRegistrationDetailRoute,
   superAdminIndexRoute,
   superAdminSectionRoute,
