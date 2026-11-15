@@ -191,6 +191,7 @@ model Organization {
   invitations OrganizationInvitation[]
   auditLogs   AuditLog[]
   programmes  Programme[]
+  households  Household[]
 
   @@index([status])
   @@map("organizations")
@@ -374,4 +375,20 @@ model Programme {
   @@unique([organizationId, year])
   @@index([organizationId, id])
   @@map("programmes")
+}
+
+model Household {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  address        String
+  contactEmail   String?  @map("contact_email")
+  contactPhone   String?  @map("contact_phone")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, id])
+  @@map("households")
 }

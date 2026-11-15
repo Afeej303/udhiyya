@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import {
   FastifyAdapter,
   type NestFastifyApplication,
@@ -36,6 +37,7 @@ const createOrganisation = vi.fn();
 const createAuditEvent = vi.fn().mockResolvedValue({});
 const createMembership = vi.fn();
 const findMembership = vi.fn().mockResolvedValue(null);
+const importHouseholds = vi.fn().mockResolvedValue({ count: 1 });
 let app: NestFastifyApplication;
 
 beforeAll(async () => {
@@ -66,6 +68,7 @@ beforeAll(async () => {
       userRole: { findMany: assignments },
       organizationMember: { findFirst: findMembership },
       programme: { findFirst: findProgramme },
+      household: { createMany: importHouseholds },
       organization: { findMany: findOrganisations },
       $transaction: async (work: (tx: object) => Promise<unknown>) =>
         work({
@@ -235,4 +238,82 @@ it('creates an onboarding workspace without granting the platform actor committe
       data: expect.objectContaining({ actorId: id, organizationId: orgId }),
     }),
   );
+});
+
+it('imports valid household CSV records atomically and reports invalid rows without writing', async () => {
+  const membership = {
+    id,
+    organization: { id: orgId, name: 'Example Mahallu', slug: 'example' },
+    roles: [
+      {
+        role: { slug: 'org_admin', scope: 'ORGANIZATION', rolePermissions: [] },
+      },
+    ],
+  };
+  const send = (csv: string) => {
+    findMembership.mockResolvedValueOnce(membership);
+    return request(app.getHttpServer())
+      .post(`/organisations/${orgId}/households/import`)
+      .set('Authorization', 'Bearer token')
+      .attach('file', Buffer.from(csv), 'households.csv');
+  };
+
+  await send('name,address,email\nExample,Main Street,invalid\n')
+    .expect(200)
+    .expect(({ body }) => {
+      expect(body).toMatchObject({
+        importedCount: 0,
+        errors: [{ row: 2, field: 'contact.email' }],
+      });
+    });
+  expect(importHouseholds).not.toHaveBeenCalled();
+
+  await send(
+    'name,address,email\nExample,Main Street,office@example.com\n',
+  ).expect(200, { importedCount: 1, errors: [] });
+  expect(importHouseholds).toHaveBeenCalledWith({
+    data: [
+      {
+        organizationId: orgId,
+        name: 'Example',
+        address: 'Main Street',
+        contactEmail: 'office@example.com',
+        contactPhone: null,
+      },
+    ],
+  });
+});
+
+it('imports a valid XLSX workbook through Fastify', async () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Households');
+  sheet.addRow(['name', 'address', 'phone']);
+  sheet.addRow(['Example', 'Main Street', '001234']);
+  const file = Buffer.from(await workbook.xlsx.writeBuffer());
+  findMembership.mockResolvedValueOnce({
+    id,
+    organization: { id: orgId, name: 'Example Mahallu', slug: 'example' },
+    roles: [
+      {
+        role: { slug: 'org_admin', scope: 'ORGANIZATION', rolePermissions: [] },
+      },
+    ],
+  });
+
+  await request(app.getHttpServer())
+    .post(`/organisations/${orgId}/households/import`)
+    .set('Authorization', 'Bearer token')
+    .attach('file', file, 'households.xlsx')
+    .expect(200, { importedCount: 1, errors: [] });
+  expect(importHouseholds).toHaveBeenLastCalledWith({
+    data: [
+      {
+        organizationId: orgId,
+        name: 'Example',
+        address: 'Main Street',
+        contactEmail: null,
+        contactPhone: '001234',
+      },
+    ],
+  });
 });

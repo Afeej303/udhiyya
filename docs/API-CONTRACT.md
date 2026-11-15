@@ -120,6 +120,8 @@ SA06 platform settings and SA07 support requests have scope TBD. SA05 paid plans
 | PAR01, PAR04, PAR07–08 | P GET /me/participation | Applicant. `{ registration, assignment, operations, distribution }`. Unassigned sections are null. Return own group/animal/share and published progress and collection details. |
 | PAR03, ADM02 | P GET /me/participation-options, GET/PUT /participation-options | Applicant read returns available choices. Committee GET/PUT manages `{ items: [{ id?, name, price, maxShares }] }`. Existing registrations retain their fee and option snapshot. |
 
+The committee household directory and multipart import are implemented for local verification. Household names and addresses are non-blank and limited to 200 and 1,000 characters respectively. Contact is an object with optional email and phone fields. A PATCH that supplies contact replaces that object. Directory search matches name or address. Import uses a single part named `file`, up to 2 MiB and 1,000 data rows. Use `name,address,email,phone` headers, with name and address required. For XLSX, use the first worksheet and keep phone values as text to retain leading zeros. A file with invalid rows returns HTTP 200 with `importedCount: 0` and row errors. Invalid file structure returns 400, and limits return 413. A successful batch creates new records, so confirm the result before retrying an upload.
+
 Proposed registration transitions are submitted → approved or rejected, and submitted or approved → cancelled by committee. Rules for cancellation after payment or allocation remain open. The server validates registration dates and capacity and rejects duplicates for the same applicant/programme with 409.
 
 ### Animals, finance and receipts

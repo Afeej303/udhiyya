@@ -1,3 +1,4 @@
+import multipart from '@fastify/multipart';
 import fastifyHelmet from '@fastify/helmet';
 import type { INestApplication } from '@nestjs/common';
 import {
@@ -85,6 +86,7 @@ export async function configureFastifyApp(
   app: NestFastifyApplication,
 ): Promise<AppConfig> {
   const appCfg = configureCommon(app);
+  await app.register(multipart);
   await app.register(fastifyHelmet, {
     contentSecurityPolicy: appCfg.nodeEnv === 'production' ? undefined : false,
     crossOriginEmbedderPolicy: false,
