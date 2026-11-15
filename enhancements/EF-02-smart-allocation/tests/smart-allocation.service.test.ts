@@ -46,7 +46,7 @@ function makePrisma(
   animals: ReturnType<typeof makeAnimal>[],
   existingAllocations: Array<{ participantId: number; animalId: number }> = [],
 ): PrismaLike {
-  const executeRawCalls: string[] = [];
+  const queryRawCalls: string[] = [];
   const mock: PrismaLike = {
     programme: {
       findUnique: async () => ({ id: 1 }),
@@ -63,9 +63,9 @@ function makePrisma(
       count: async () => existingAllocations.length,
     },
     $transaction: async (fn: any) => fn(mock),
-    $executeRawUnsafe: async (query: string) => {
-      executeRawCalls.push(query);
-      return 1;
+    $queryRawUnsafe: async (query: string) => {
+      queryRawCalls.push(query);
+      return [{ id: 1 }];
     },
   };
   return mock;
@@ -189,12 +189,12 @@ describe('SmartAllocationService.commit() Security & Atomic Concurrency', () => 
     ).rejects.toThrow('INVALID_TOKEN');
   });
 
-  test('executes row-level lock SELECT ... FOR UPDATE inside the transaction', async () => {
+  test('executes row-level lock SELECT ... FOR UPDATE via $queryRawUnsafe inside the transaction', async () => {
     const executedQueries: string[] = [];
     const prisma = makePrisma([makeParticipant(1)], [makeAnimal(1)]);
-    prisma.$executeRawUnsafe = async (q: string) => {
+    prisma.$queryRawUnsafe = async (q: string) => {
       executedQueries.push(q);
-      return 1;
+      return [{ id: 1 }];
     };
 
     const svc = new SmartAllocationService(prisma);
@@ -209,9 +209,8 @@ describe('SmartAllocationService.commit() Security & Atomic Concurrency', () => 
     expect(executedQueries[0]).toContain('SELECT id FROM "Animal" WHERE id IN (1) FOR UPDATE');
   });
 
-  test('fails closed with CONCURRENCY_ERROR if database client does not support raw row-locking', async () => {
+  test('fails closed with CONCURRENCY_ERROR if database client does not support $queryRawUnsafe', async () => {
     const prisma = makePrisma([makeParticipant(1)], [makeAnimal(1)]);
-    delete prisma.$executeRawUnsafe;
     delete prisma.$queryRawUnsafe;
 
     const svc = new SmartAllocationService(prisma);

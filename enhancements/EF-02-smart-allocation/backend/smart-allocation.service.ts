@@ -112,7 +112,6 @@ export interface PrismaLike {
     count: (a: object) => Promise<number>;
   };
   $transaction?: <T>(fn: (tx: PrismaLike) => Promise<T>) => Promise<T>;
-  $executeRawUnsafe?: (query: string, ...values: any[]) => Promise<any>;
   $queryRawUnsafe?: (query: string, ...values: any[]) => Promise<any>;
 }
 
@@ -327,20 +326,22 @@ export class SmartAllocationService {
 
     // 2. Transaction execution boundary
     const executeCommit = async (tx: PrismaLike): Promise<CommitResult> => {
-      // ATOMIC LOCK: Lock animal rows with FOR UPDATE to serialize concurrent commits
-      // Fails closed if raw lock execution method is unavailable
+      // ATOMIC LOCK: Lock animal rows with FOR UPDATE using $queryRawUnsafe
+      // Fails closed if query locking method is unavailable or fails
       if (targetAnimalIds.length > 0) {
-        const rawFn = tx.$executeRawUnsafe || tx.$queryRawUnsafe;
-        if (!rawFn) {
+        if (!tx.$queryRawUnsafe) {
           throw new Error(
-            'CONCURRENCY_ERROR: Database client does not provide row-locking capability ($executeRawUnsafe / $queryRawUnsafe).'
+            'CONCURRENCY_ERROR: Database client does not provide query-locking capability ($queryRawUnsafe).'
           );
         }
         const idList = targetAnimalIds.map((id) => Number(id)).filter((id) => !isNaN(id));
         if (idList.length > 0) {
-          await rawFn(
+          const lockedRows = await tx.$queryRawUnsafe(
             `SELECT id FROM "Animal" WHERE id IN (${idList.join(',')}) FOR UPDATE`
           );
+          if (lockedRows === null || lockedRows === undefined) {
+            throw new Error('CONCURRENCY_ERROR: Failed to acquire row lock on target animals.');
+          }
         }
       }
 

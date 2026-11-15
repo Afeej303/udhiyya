@@ -43,8 +43,7 @@ function createMockPrisma(): PrismaLike {
       count: async () => allocated.length,
     },
     $transaction: async (fn: any) => fn(mock),
-    $executeRawUnsafe: async (_q: string) => 1,
-    $queryRawUnsafe: async (_q: string) => [],
+    $queryRawUnsafe: async (_q: string) => [{ id: 1 }],
   };
   return mock;
 }
