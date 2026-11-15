@@ -4,11 +4,11 @@ Status: DRAFT v0 · Owner: M2
 
 ## Proposed baseline
 
-Use the parent authentication starter for the NestJS REST API, ESM, Prisma/PostgreSQL and Vitest. Use its Supabase Auth mode and [frontend auth contract](../../docs/frontend-auth.md). Copy source and lockfile into `backend/` after the baseline is agreed. Review starter routes and permissions before exposing them, especially organisation creation, invitation and platform admin access.
+Use the parent authentication starter for the NestJS REST API, ESM, Prisma/PostgreSQL and Vitest. Use its Supabase Auth mode and [frontend auth contract](../../docs/frontend-auth.md). Source and lockfile from starter commit `db7a191` are imported into `backend/` for local verification. The imported harness uses Express. The team selected Fastify in D-001, so deployment and contract-facing route work must use the Fastify port. Review starter routes and permissions before exposing them, especially organisation creation, invitation and platform admin access.
 
 | Path | Responsibility |
 |---|---|
-| `frontend/` | M1 screens and API consumer. Framework TBD in Frontend Needs. |
+| `frontend/` | M1 React + Vite + TypeScript client-rendered SPA with Tailwind. Calls the separate NestJS REST API. |
 | `backend/` | M2 API, data access, migrations and tests. |
 | `enhancements/` | M3 feature modules behind flags. |
 | `shared/` | Shared assets if agreed by the team. |
