@@ -144,6 +144,10 @@ Committee decisions transition submitted to approved, rejected or cancelled, or 
 
 Pending payments move to verified or rejected. Verified balances and payment receipts derive from verified records only. Duplicate submissions and verification retries must preserve a single financial effect. Shares require approved registrations, valid tenant relations and available capacity. Animal, group and share-allocation routes are implemented for local verification. An approved registration may have one assignment, up to its approved share count. Approval is required for allocating shares. Groups on the same animal draw from its shared capacity. Release an assignment before cancelling an approved registration. Receipt download format, refund rules and receipt issuance timing remain open.
 
+Animal, group, allocation and participant assignment routes are implemented locally. A registration can hold one assignment, up to its approved share count. Groups on the same animal share its total capacity. Approval is required for allocating shares. Release the assignment before cancelling.
+
+Committee finance and participant payment and receipt reads are implemented locally. Payment methods are `cash`, `upi`, `bank_transfer` and `other`. Amounts must be positive. Exact payment submissions with the same registration, amount, method, reference and timestamp resolve to the existing payment. Verification rejects amounts above the outstanding balance. Successful verification issues one payment receipt. Approval issues one registration confirmation receipt. Resolve outstanding payment records before cancelling a registration. Refund and adjustment policy remains open. Volunteer cash submission will follow the volunteer assignment slice.
+
 ### Volunteer assignments and operations
 
 | Screen | Route | Request and response |

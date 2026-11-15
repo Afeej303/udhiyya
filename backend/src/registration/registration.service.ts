@@ -366,6 +366,20 @@ export class RegistrationService {
             'Release the share allocation before cancelling registration',
           );
       }
+      if (status === 'cancelled') {
+        const payment = await tx.payment.findFirst({
+          where: {
+            programmeId: scope.programmeId,
+            registrationId: id,
+            status: { in: ['pending', 'verified'] },
+          },
+          select: { id: true },
+        });
+        if (payment)
+          throw new ConflictException(
+            'Resolve payments before cancelling registration',
+          );
+      }
       const changed = await tx.registration.update({
         where: { id, programmeId: scope.programmeId },
         data: {

@@ -20,6 +20,7 @@ import { EmailModule } from './email/email.module.js';
 import { HealthModule } from './health/health.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
 import { PermissionsModule } from './permissions/permissions.module.js';
+import { FinanceModule } from './finance/finance.module.js';
 import { AnimalsModule } from './animals/animals.module.js';
 import { RegistrationModule } from './registration/registration.module.js';
 import { HouseholdsModule } from './households/households.module.js';
@@ -87,6 +88,7 @@ import { UsersModule } from './users/users.module.js';
     HouseholdsModule,
     RegistrationModule,
     AnimalsModule,
+    FinanceModule,
     ConditionalModule.registerWhen(
       AuthModule,
       (env) => env.AUTH_MODE !== 'supabase',
