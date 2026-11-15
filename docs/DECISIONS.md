@@ -19,3 +19,9 @@ Append only. Add one entry at the end for each decision about scope, architectur
 - **Decision:** Incorporate `docs/Features_workflow.md` from `origin/main` into the project baseline and rebase setup documentation commits directly on top of `origin/main`.
 - **Reason and trade-offs:** Keeps repo history clean and ensures all team members have immediate access to the full SaaS and role specification document.
 - **Affected files:** `docs/Features_workflow.md`, `docs/DECISIONS.md`, Git branch history
+
+### D-003: M2 REST field conventions
+- **Date:** 2026-11-15 · **Status:** Accepted · **Decided by:** M2 with project owner direction
+- **Decision:** Use the existing API contract's opaque string IDs, ISO 8601 `registrationOpensAt` and `registrationClosesAt`, money as `{ amountMinor, currency }` with INR for the programme, integer grams for distribution, and XLSX/PDF report exports. Distribution states are `draft`, `confirmed`, `packed`, `collected`, and `delivered`, with cancellation handled by the documented committee action. Use method and path to identify endpoints in mocks. Batch allocation remains a proposed additive endpoint.
+- **Reason and trade-offs:** Align backend implementation and frontend mocks with the published draft and use exact integer units for financial and inventory accounting.
+- **Consequences:** M1 can align its notes and mocks to these conventions. The full contract remains subject to its existing reconciliation and change rules.
