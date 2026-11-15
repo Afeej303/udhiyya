@@ -2,49 +2,29 @@
 
 Status: DRAFT v0 · Owner: M2
 
-> Planner: fill from the planning-call stack. Inspect any starter project before writing commands; otherwise leave `TBD`.
+## Proposed baseline
 
-## 1. Stack
-- **Application type:** TBD
-- **Frontend:** TBD
-- **Backend:** TBD
-- **Database:** TBD
-- **External services:** TBD
-- **Hosting / shared environment:** TBD
+Use the parent authentication starter for the NestJS REST API, ESM, Prisma/PostgreSQL and Vitest. Use its Supabase Auth mode and [frontend auth contract](../../docs/frontend-auth.md). Copy source and lockfile into `backend/` after the baseline is agreed. Review starter routes and permissions before exposing them, especially organisation creation, invitation and platform admin access.
 
-## 2. Repository map (actual)
+| Path | Responsibility |
+|---|---|
+| `frontend/` | M1 screens and API consumer. Framework TBD in Frontend Needs. |
+| `backend/` | M2 API, data access, migrations and tests. |
+| `enhancements/` | M3 feature modules behind flags. |
+| `shared/` | Shared assets if agreed by the team. |
 
-| Path | Purpose | Owner |
-|---|---|---|
-| `frontend/` | TBD (record the real path if the starter differs) | M1 |
-| `backend/` | TBD | M2 |
-| `enhancements/` | M3 feature modules | M3 |
-| `shared/` | Shared types or clients, only if needed | By agreement |
+## Request flow
 
-## 3. Request and data flow
-TBD
+The browser signs in through Supabase Auth. Nest verifies the bearer token and maps the external identity to the starter profile. Platform routes check server-assigned platform permissions. Committee routes resolve the requested organisation, current membership and workspace state, then constrain Prisma queries to that organisation. Platform admin access covers platform operations. Exceptional support access requires scoped authorization and audit.
 
-## 4. Extension hooks (set up once; M3's features use them)
-- **Backend mount hook:** one place in `backend/` that loads enhancement modules, guarded by flags. M2 builds it early. TBD
-- **Extension namespace:** TBD (for example a route prefix per feature: `/api/ext/<EF-ID>/...`).
-- **Frontend slots:** named in `docs/FRONTEND-NEEDS.md`. M1 builds them early.
-- **Flag mechanism:** `FEATURE_<EF-ID>` environment variables, default `off`. Frontend equivalent: TBD (depends on the stack).
+Anonymous programme routes look up the organisation and year and serve an explicit public projection for active organisations and published programmes. App data flows through Nest. Follow the [reuse guide](../../docs/reuse.md) for keeping app tables outside the Supabase Data API.
 
-## 5. Shared environment
-- **URL:** TBD (posted in a `DEPLOYED` ping)
-- **How to deploy:** TBD
-- **Seed/demo data command:** TBD
+Reuse the starter's auth, identity mapping, organisation membership, validation, error filter and health infrastructure. Adapt the competition starter's notification and payment integrations at the service boundary. M2 records and verifies core payment activity. Razorpay checkout depends on the optional scope decision in the workflow. Provider-specific order identifiers must map to programme records before checkout is adopted.
 
-## 6. Local development
-- Prerequisites: TBD · Install: TBD · Configure env: TBD · Run: TBD · Test: TBD
+## Integration and rollout
 
-## 7. Environment variables
+Use a fresh destination Supabase project. The starter uses `AUTH_MODE=supabase`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `DATABASE_URL`, `DIRECT_URL` and `ALLOWED_ORIGINS`. Deployment URL, email sender, delivery limits and fallback are TBD. Confirm local run and migration commands against the copied backend before publishing run instructions.
 
-| Variable | Used by | Required | Description | Safe example |
-|---|---|---|---|---|
-| TBD | TBD | TBD | TBD | TBD |
+M2 will provide one extension mount in the backend with feature flags defaulting off. Proposed namespace is `/ext/<feature-id>` relative to the API base. Confirm the mount interface with M3 before implementation. Frontend slots are owned by M1.
 
-Never include real secrets.
-
-## 8. Scalability notes (for the pitch)
-TBD
+Use bounded pagination for organisation and programme lists. Index tenant-scoped lookups and keep publication, invitation acceptance and audit writes consistent under retry. Before deployment, verify onboarding through publication in two organisations, including suspended access, draft visibility and cross-tenant denial.

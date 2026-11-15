@@ -1,56 +1,182 @@
 # API Contract (MVP)
 
-Status: DRAFT v0 · Owner: M2 · Consumers: M1
+Status: DRAFT v0 · Owner: M2 · Consumer: M1
 
-> Planner: propose only endpoints implied by the MVP features and mark them `Proposed`. M2 corrects, then M2 pings `CONTRACT FREEZE v1`.
+This proposal covers the M2 journeys in [Features_workflow.md](Features_workflow.md). M1 can use the examples as mock fixtures after reviewing the payloads.
 
-If the team adopts OpenAPI, store it at `shared/openapi.yaml` and treat it as the source of truth; this file then points to it.
+## Conventions
 
-## 1. Conventions
-- **Base URL / transport:** TBD
-- **Authentication:** TBD
-- **Content type:** TBD
-- **Common error format:** TBD
-- **Versioning:** TBD
+Use JSON over HTTPS. Paths below are relative to the configured API base, including any prefix. Protected calls send a Supabase access token as `Authorization: Bearer <token>`, following the [starter frontend contract](../../docs/frontend-auth.md). Signup, confirmation, login and recovery follow that contract. Protected workspace calls verify the caller's current role, membership and organisation status.
 
-M3's extension endpoints are not listed here. They live in the extension namespace and are documented in `docs/EXTRA-FEATURE-PLAN.md`.
+## Screen and endpoint map
 
-## 2. Endpoint inventory
+All route names and new payloads are proposed. IDs are opaque strings. Mutation responses return the updated resource unless specified below.
 
-| ID | Method and path | Purpose | Auth | Status |
-|---|---|---|---|---|
-| API-001 | TBD | TBD | TBD | Proposed |
+| Screen | Method and path | Access and payload | Success |
+|---|---|---|---|
+| PUB09 and signed-in shell | GET /users/me | Signed-in user. Reuse the starter profile shape. | 200 profile |
+| SA02–SA03 | GET /platform/organisations | Super Admin. Optional `search`, `cursor`, `limit`. | 200 `{ items, nextCursor }`, with null cursor at the end |
+| SA02–SA03 | POST /platform/organisations | Super Admin. `{ name, locality, contact }`. | 201 organisation in `onboarding` |
+| SA03 | GET /platform/organisations/:orgId | Super Admin. | 200 organisation |
+| SA03 | PATCH /platform/organisations/:orgId | Super Admin. Update `name`, `locality`, `contact` or `status`. | 200 organisation |
+| SA04 | POST /platform/organisations/:orgId/invitations | Super Admin. `{ name, email }`. Committee Admin role set by server. | 201 `{ id, status: "pending" }` |
+| SA04 | GET /platform/organisations/:orgId/invitations | Super Admin. Cursor paging as above. | 200 invitation summaries with name, email and status |
+| Invitation link | POST /organisations/invitations/accept | Verified signed-in recipient. `{ token }`. | 200 `{ organisationId, role: "committee_admin" }` |
+| Committee workspace | GET /organisations | Signed-in user. Reuse starter membership lookup, with organisation status available for routing. | 200 caller's workspace list |
+| ADM02 | GET /organisations/:orgId/programmes | Committee Admin in that active organisation. Cursor paging as above. | 200 `{ items, nextCursor }` |
+| ADM02 | POST /organisations/:orgId/programmes | Same. `{ year, title }`. | 201 programme in `draft` |
+| ADM02 | GET /organisations/:orgId/programmes/:programmeId | Same. | 200 programme |
+| ADM02 | PATCH /organisations/:orgId/programmes/:programmeId | Same. Update editable programme fields below. | 200 programme |
+| ADM02 | POST /organisations/:orgId/programmes/:programmeId/publish | Same. Validated programme with required public information. | 200 programme in `published` |
+| PUB02–PUB04, PUB08 | GET /public/organisations/:orgId/programmes/:year | Anonymous. Organisation active and programme published. | 200 public programme projection |
 
-Status values: `Proposed`, `Agreed`, `Implemented`, `Deprecated`.
+PUB01 is a frontend loading state. PUB05 announcements, PUB06 approved aggregates, and PUB07 distribution depend on later work. SA01 dashboard metrics and SA05–SA08 require the scope review tracked in M2.
 
-## 3. Endpoint detail
+## Payload examples
 
-### API-001: [Name]
-- **Request:**
+Organisation detail (`contact` is private platform/committee contact information):
+
 ```json
-{ "example": "TBD" }
+{"id":"org_demo","name":"Example Mahallu","locality":"Example Town","contact":{"email":"office@example.test"},"status":"onboarding"}
 ```
-- **Success response:**
+
+Programme detail and public projection share these proposed fields. The committee response also includes `id`, `organisationId` and `registrationLimit`. Public contact comes from the programme's explicitly published contact field.
+
 ```json
-{ "example": "TBD" }
+{
+  "year": 2027,
+  "title": "Annual Aḍḥiyah Programme",
+  "status": "published",
+  "description": "Programme information for residents",
+  "guidelines": "Read the participation requirements before registering.",
+  "publicContact": {"email":"programme@example.test"},
+  "registrationOpensAt": "2027-04-01T03:30:00Z",
+  "registrationClosesAt": "2027-05-01T03:30:00Z",
+  "price": {"amountMinor":250000,"currency":"INR"}
+}
 ```
-- **Errors:** TBD
-- **Validation:** TBD
-- **Mock location:** TBD
 
-## 4. Shared data types
+Draft fields other than year and title may be null. Year and organisation identify the public page and are immutable after creation in this proposal. Date fields are ISO 8601 instants. Registration close must follow opening. Capacity is a positive integer and price uses non-negative integer minor units. Suggested publish requirements are description, guidelines, public contact, dates, price and capacity. M1 should show whether registration is upcoming, open or ended separately from publication status.
 
-| Type | Fields | Source of truth |
+## Errors and UI behavior
+
+```json
+{"statusCode":409,"error":"Conflict","message":"A programme already exists for this year","code":"PROGRAMME_YEAR_EXISTS","timestamp":"2027-01-01T00:00:00.000Z","path":"/organisations/org_demo/programmes"}
+```
+
+| HTTP | Client handling |
+|---|---|
+| 400 | Show validation details. Starter `message` can be a string or array. |
+| 401 | Follow the starter's refresh and login flow. |
+| 403 | Show access denied, verified-email required, or workspace unavailable according to the returned code when defined. |
+| 404 | Show unavailable for missing, unpublished public, or out-of-tenant programme resources. |
+| 409 | Show duplicate year, invalid transition, or unavailable invitation. Refresh current state before retrying. |
+| 429 / 503 | Show temporary unavailability and allow retry. Confirm mutation outcome before repeating a write. |
+
+M1 should provide loading, empty, success and error states for the workspace, lists and setup forms. For onboarding, show pending invitation and activation separately. Confirm exact profile and workspace projections, invitation delivery and resend flow, public URL design, pricing shape and mock location with M1 before freeze. The remaining proposed routes are below. M3 routes are tracked in [EXTRA-FEATURE-PLAN.md](EXTRA-FEATURE-PLAN.md).
+
+## Programme operations and self-service
+
+All routes below are proposed. Prefix relative paths with the base in the first column. `P` is `/organisations/:orgId/programmes/:programmeId`, `O` is `/organisations/:orgId`, and `U` is `/public/organisations/:orgId/programmes/:year`. Lists return `{ items, nextCursor }` and accept `cursor` and `limit`, with proposed default 25 and maximum 100. Reads and actions return 200, creates return 201, and deletes return 204. Optional values are nullable in responses. An omitted PATCH field retains its value. Each resource returns an opaque `id` and applicable state. Timestamps use ISO 8601 and money uses the programme price shape. Quantities are integer grams, counts or share units, as named.
+
+### Public and platform
+
+| Screen | Route | Request and response |
 |---|---|---|
-| TBD | TBD | `docs/DATABASE-SCHEMA.md` |
+| SA01 | GET /platform/dashboard | Super Admin. Organisation counts by status, committee admin count and recent platform events. |
+| SA04 | POST /platform/organisations/:orgId/invitations/:id/revoke | Super Admin. Revokes a pending invitation and returns its updated state. |
+| SA05 | GET/PATCH /platform/organisations/:orgId/features | Super Admin. GET and PATCH return `{ enabledFeatures: string[] }`. PATCH sends the full set of agreed feature keys. |
+| SA08 | GET /platform/audit-events | Super Admin. Filter by `organisationId` and `action`. Rows include actor ID, action, resource ID and timestamp. |
+| PUB05 | U GET /announcements | Published announcements with title, body and publication time. |
+| PUB06 | U GET /overview | Approved aggregates with as-of time. Proposed fields are animal count and programme progress, with optional published financial totals. |
+| PUB07 | U GET /distribution | Published eligibility guidance, locations, collection windows and enquiry instructions. |
+| PUB08, BEN07 | U POST /enquiries | `{ name, replyEmail, message }` → acknowledgement with ID. Rate limit and keep enquiry contact private. |
 
-## 5. Change rules
-- **Additive** (new endpoint, new optional field): update this file in the same commit as the code, send `CONTRACT additive`.
-- **Breaking** (rename, remove, type or error-format change): send `CONTRACT breaking` first, wait for every consumer's `ok`, then merge.
-- After `CONTRACT FREEZE v1`, only additive changes without agreement.
+SA06 platform settings and SA07 support requests have scope TBD. SA05 paid plans and checkout are conditional scope. Invitation states are proposed as pending, accepted, expired and revoked. Expiry, mismatched recipient or prior redemption must not grant membership.
 
-## 6. Open contract questions
+### Households, registrations and personal tracking
 
-| Question | Owner | Status |
+| Screen | Route | Request and response |
 |---|---|---|
-| TBD | M2 | Open |
+| ADM03 | O GET/POST /households | Committee. List filter `search`. Create with `{ name, address, contact }`. |
+| ADM03 | O GET/PATCH /households/:id | Committee. Read/update household fields. |
+| ADM03 | O POST /households/import | Committee. Multipart `file`, CSV/XLSX. Return `{ importedCount, errors: [{ row, field, message }] }`. Proposed atomic import, with any invalid row rejecting the batch. |
+| ADM04–05 | P GET /registrations, GET /registrations/:id | Committee. List filters `status`, `search`. Detail includes applicant, household snapshot, option, requested shares and decision. |
+| ADM05 | P POST /registrations/:id/decision | Committee. `{ action: "approve"|"reject"|"cancel", reason? }` returns updated registration. |
+| PAR02 | PATCH /users/me | Starter profile update. |
+| PAR02 | P GET/PUT /me/household | Signed-in applicant. Read/update own submitted household details `{ name, address, contact }`. Committee household links are resolved by the server. |
+| PAR03 | P POST /me/registration | Signed-in applicant during registration window. `{ optionId, shares }` → submitted registration. Household data comes from own submission. |
+| PAR03 | P GET /me/registration | Applicant. Own registration and decision. 404 before applying. |
+| PAR01, PAR04, PAR07–08 | P GET /me/participation | Applicant. `{ registration, assignment, operations, distribution }`. Unassigned sections are null. Return own group/animal/share and published progress and collection details. |
+| PAR03, ADM02 | P GET /me/participation-options, GET/PUT /participation-options | Applicant read returns available choices. Committee GET/PUT manages `{ items: [{ id?, name, price, maxShares }] }`. Existing registrations retain their fee and option snapshot. |
+
+Proposed registration transitions are submitted → approved or rejected, and submitted or approved → cancelled by committee. Rules for cancellation after payment or allocation remain open. The server validates registration dates and capacity and rejects duplicates for the same applicant/programme with 409.
+
+### Animals, finance and receipts
+
+| Screen | Route | Request and response |
+|---|---|---|
+| ADM06 | P GET/POST /animals, GET/PATCH /animals/:id | Committee. `{ reference, shareCapacity, supplierName, procurementCost, procuredAt }`. Return animal and allocated share count. |
+| ADM07 | P GET/POST /groups, GET/PATCH /groups/:id | Committee. `{ name, animalId }`. Return group with capacity and assigned share count. |
+| ADM07 | P GET/POST /share-allocations, DELETE /share-allocations/:id | Committee. Create with `{ registrationId, groupId, shares }`. Query by group or registration. Allocation and release update capacity atomically. |
+| ADM08 | P GET /finance/summary | Finance-authorized committee. Expected, verified, outstanding and expenses totals. |
+| ADM09 | P GET/POST /payments | Finance-authorized committee. Filter by registration/status. Create with `{ registrationId, amount, method, reference?, receivedAt }` → pending payment. |
+| ADM09 | P POST /payments/:id/verification | Finance-authorized committee. `{ action: "verify"|"reject", reason? }` → updated payment and receipt ID when verified. |
+| ADM10 | P GET/POST /expense-categories, PATCH /expense-categories/:id | Finance-authorized committee. `{ name }`. |
+| ADM10 | P GET/POST /expenses, PATCH /expenses/:id | Finance-authorized committee. `{ categoryId, amount, description, incurredAt }`. |
+| PAR05 | P GET /me/payments | Applicant. `{ expected, verified, outstanding, items, nextCursor }`. Items show own payment amount, method, status and date. |
+| PAR06, ADM09 | P GET /me/receipts, GET /receipts/:id | Own receipt metadata list. Detail requires owner or finance-authorized committee. Fields include receipt number, issue date, kind, amount when applicable and associated record ID. |
+| VOL03 finance | P GET /volunteer/collections, POST /volunteer/cash-submissions | Assigned finance volunteer. Read own collection assignments. Submit `{ assignmentId, amount, receivedAt, reference? }` → pending payment summary. |
+
+Pending payments move to verified or rejected. Verified balances and payment receipts derive from verified records only. Duplicate submissions and verification retries must preserve a single financial effect. Shares require approved registrations, valid tenant relations and available capacity. Confirm payment prerequisites for allocation, receipt download format, refund/adjustment rules and receipt issuance timing with M1/M2.
+
+### Volunteer assignments and operations
+
+| Screen | Route | Request and response |
+|---|---|---|
+| ADM11 | P GET/POST /volunteers, PATCH /volunteers/:id | Committee. Create/invite `{ name, email, departments }`. Edit departments/access. Return identity summary and invitation/access status. |
+| ADM11–12 | P GET/POST /tasks, PATCH /tasks/:id | Committee. `{ department, assigneeId, title, scheduleId?, resourceId? }`. |
+| ADM12–13 | P GET/POST /schedules, PATCH /schedules/:id | Committee. `{ department, animalId?, startsAt, endsAt, location, teamMemberIds }`. |
+| ADM13 | P GET /operations, GET /issues, PATCH /issues/:id | Committee. Filter by department/status. Issue patch sets resolution/status. |
+| VOL01–04 | P GET /volunteer/workspace, GET /volunteer/tasks, GET /volunteer/schedules, GET /volunteer/operations | Assigned volunteer. Return own departments, tasks, team schedules and assigned record projections. |
+| VOL02 | P POST /volunteer/tasks/:id/progress | Assigned volunteer. `{ status, note? }` → task. |
+| VOL03 | P POST /volunteer/operations/:id/progress | Assigned slaughter/processing volunteer. `{ status, stage?, measuredGrams?, packageCount? }` → operation. Stage-specific fields require matching department and action. |
+| VOL05 | P GET/POST /volunteer/issues | Assigned volunteer. Own issue history. Create with `{ taskId?, operationId?, description }` → open issue. |
+| VOL06 | GET/PATCH /users/me | Starter profile read/update. Notifications below. |
+
+Tasks and operations propose pending → in progress → completed. Processing stages track cutting, weighing and packaging. Slaughter scheduling requires a confirmed animal assignment. Operational updates record the actor and time. Committee approves the exact transition graph, required measurements and correction permissions before consuming writes.
+
+### Beneficiary access and distribution
+
+| Screen | Route | Request and response |
+|---|---|---|
+| ADM14 | P GET/POST /beneficiaries, GET/PATCH /beneficiaries/:id | Committee. Create `{ householdId }`, maintain recipient details and verify eligibility through an explicit status action below. |
+| ADM14 | P POST /beneficiaries/:id/eligibility | Committee. `{ action: "approve"|"reject", reason? }` → eligibility summary. |
+| ADM14, BEN01 | P POST /beneficiaries/:id/access, POST /me/beneficiary-access/accept | Committee issues access instructions. Verified recipient completes account linking. Delivery mechanism, proof payload and expiry TBD. |
+| BEN02–BEN06 | P GET /me/beneficiary, GET /me/beneficiary/distribution | Linked recipient. Own household projection and eligibility, plus confirmed allocation/collection and tracking. Allocation is null before confirmation. |
+| ADM14 | P GET/PUT /distribution/policy | Committee. Return/update participant and public eligibility rules and ration quantities. Exact rule shape TBD. |
+| ADM15 | P GET /distribution/inventory | Committee. `{ recordedGrams, allocatedGrams, availableGrams }` derived from actual processing records. |
+| ADM15 | P GET/POST /distribution/allocations | Committee. `{ recipientType, recipientId, quantityGrams, collectionWindowId }` → draft allocation. |
+| ADM15 | P POST /distribution/allocations/:id/transition | Committee. `{ action: "confirm"|"pack"|"cancel" }` → allocation. Confirmation and inventory reservation are atomic. |
+| ADM15 | P GET/POST /distribution/collection-windows, PATCH /distribution/collection-windows/:id | Committee. `{ location, startsAt, endsAt, instructions }`. |
+| VOL03 distribution | P GET /volunteer/distribution/queue, POST /volunteer/distribution/allocations/:id/handoff | Assigned distribution volunteer. List assigned packages. Handoff takes `{ outcome: "collected"|"delivered", recipientProof }` and returns updated allocation. Proof format TBD. |
+
+Beneficiary eligibility proposes pending → approved/rejected. Distribution proposes draft → confirmed → packed → collected/delivered. Committee cancellation and adjustment policy must define when reserved stock is released. Participant and beneficiary recipient IDs resolve through separate records and share inventory accounting. A handoff can only consume a confirmed and packed allocation once.
+
+### Communications, reporting and closure
+
+| Screen | Route | Request and response |
+|---|---|---|
+| ADM01 | P GET /dashboard | Committee. Household, registration, animal, finance, volunteer, operations and distribution summaries plus pending actions and recent activity. |
+| ADM16 | P GET/POST /announcements, POST /announcements/:id/publish | Committee. Create with `{ title, body }` → draft. Publish returns publication time. |
+| ADM16 | P POST /notifications | Committee. `{ title, body, audience, channels }` → dispatch ID/status. Backend resolves tenant-scoped recipients. Exact audience values TBD. |
+| PAR09, BEN07, VOL06 | P GET /me/notifications, PATCH /me/notifications/:id | Recipient. Own notification list. PATCH `{ read: true }` → updated item. |
+| ADM17 | P GET /reports/:kind, GET /reports/:kind/export | Committee with report-specific permissions. Kinds cover registration, participant, animal, allocation, payment, expense and financial summaries. Export accepts `format=xlsx|pdf` and returns a file. |
+| ADM17 | P POST /close | Committee. Returns programme with closure state. Preserve historical records and reject subsequent operational writes. Closure prerequisites and public archive visibility TBD. |
+
+### Frontend reconciliation
+
+M1 should check route grouping, payloads and loading, empty, pending, denied and conflict states against the screens. Representative conflicts include duplicate registration, exhausted share capacity, stale state and insufficient stock. Use HTTP status plus the agreed stable error code when present. Confirm the final error-code catalogue, import/report columns, options and financial rules, beneficiary proof, delivery status and mock ownership before freeze. Destructive state changes and retryable writes need explicit concurrency and idempotency behaviour during implementation.
+## Change rules
+
+Keep mocks and this file aligned. Send `CONTRACT additive` with additive changes. Coordinate breaking changes with consumers before merging. Send `CONTRACT FREEZE v1` after reconciliation with M1.
