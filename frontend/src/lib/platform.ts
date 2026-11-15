@@ -1,0 +1,202 @@
+import { normalizeRow, type DemoAccount, type Row } from "./workflow";
+
+export const platformSections = [
+  "dashboard",
+  "organisations",
+  "access",
+  "features",
+  "settings",
+  "support",
+  "activity",
+];
+export const platformFeatures = [
+  "Registration",
+  "Households",
+  "Finance",
+  "Volunteers",
+  "Distribution",
+  "Reports",
+];
+export function isPlatformOwner(account: DemoAccount | null) {
+  return account?.role === "Super Admin";
+}
+export function organisationSummary(rows: Row[]) {
+  return {
+    total: rows.length,
+    active: rows.filter((r) => r.status === "Active").length,
+    inactive: rows.filter((r) => r.status === "Inactive" || r.status === "Suspended").length,
+    onboarding: rows.filter((r) => r.status === "Onboarding" || r.status === "Awaiting setup")
+      .length,
+  };
+}
+export const platformRecords = {
+  platformOrganisations: [
+    {
+      id: "ORG-001",
+      name: "Noor Mahallu",
+      locality: "Kozhikode, Kerala",
+      contact: "office@noor.example",
+      adminName: "Amina Rahman",
+      adminContact: "amina@noor.example",
+      status: "Active",
+      plan: "Complete",
+      features: platformFeatures.join(","),
+      created: "10 Nov 2026",
+      setup: "Complete",
+    },
+    {
+      id: "ORG-002",
+      name: "Al Huda Mosque",
+      locality: "Malappuram, Kerala",
+      contact: "office@alhuda.example",
+      adminName: "Faisal Ali",
+      adminContact: "faisal@alhuda.example",
+      status: "Onboarding",
+      plan: "Community",
+      features: "Registration,Households,Distribution",
+      created: "12 Nov 2026",
+      setup: "Awaiting programme setup",
+    },
+    {
+      id: "ORG-003",
+      name: "Rahma Aḍḥiyah Committee",
+      locality: "Kannur, Kerala",
+      contact: "office@rahma.example",
+      adminName: "Sara Nizar",
+      adminContact: "sara@rahma.example",
+      status: "Active",
+      plan: "Complete",
+      features: platformFeatures.join(","),
+      created: "08 Nov 2026",
+      setup: "Complete",
+    },
+    {
+      id: "ORG-004",
+      name: "East Ward Mahallu",
+      locality: "Thrissur, Kerala",
+      contact: "office@eastward.example",
+      adminName: "Nabeel Hassan",
+      adminContact: "nabeel@eastward.example",
+      status: "Inactive",
+      plan: "Community",
+      features: "Registration,Households",
+      created: "05 Nov 2026",
+      setup: "Complete",
+    },
+  ].map(normalizeRow),
+  platformAdmins: [
+    {
+      id: "ADM-001",
+      name: "Amina Rahman",
+      organisation: "ORG-001",
+      contact: "amina@noor.example",
+      role: "Main Committee Admin",
+      status: "Active",
+    },
+    {
+      id: "ADM-002",
+      name: "Faisal Ali",
+      organisation: "ORG-002",
+      contact: "faisal@alhuda.example",
+      role: "Main Committee Admin",
+      status: "Invited",
+    },
+    {
+      id: "ADM-003",
+      name: "Sara Nizar",
+      organisation: "ORG-003",
+      contact: "sara@rahma.example",
+      role: "Main Committee Admin",
+      status: "Active",
+    },
+    {
+      id: "ADM-004",
+      name: "Nabeel Hassan",
+      organisation: "ORG-004",
+      contact: "nabeel@eastward.example",
+      role: "Main Committee Admin",
+      status: "Access paused",
+    },
+  ].map(normalizeRow),
+  platformSupport: [
+    {
+      id: "SUP-001",
+      title: "Help completing programme setup",
+      organisation: "ORG-002",
+      message:
+        "Please help us review our annual programme configuration before opening registration.",
+      priority: "High",
+      date: "14 Nov 2026",
+      status: "Open",
+    },
+    {
+      id: "SUP-002",
+      title: "Enable volunteer coordination",
+      organisation: "ORG-001",
+      message: "We would like to enable volunteer scheduling for the upcoming programme.",
+      priority: "Normal",
+      date: "13 Nov 2026",
+      status: "In progress",
+    },
+    {
+      id: "SUP-003",
+      title: "Update main contact details",
+      organisation: "ORG-003",
+      message: "Our office contact has changed. Please confirm the new details.",
+      priority: "Normal",
+      date: "11 Nov 2026",
+      status: "Resolved",
+    },
+  ].map(normalizeRow),
+  platformActivity: [
+    {
+      id: "AUD-001",
+      title: "Committee Admin invited",
+      organisation: "ORG-002",
+      name: "Platform owner",
+      date: "14 Nov 2026",
+      status: "Recorded",
+      description: "Main administrator invitation prepared for Al Huda Mosque.",
+    },
+    {
+      id: "AUD-002",
+      title: "Feature access updated",
+      organisation: "ORG-001",
+      name: "Platform owner",
+      date: "13 Nov 2026",
+      status: "Recorded",
+      description: "Reports enabled for Noor Mahallu.",
+    },
+    {
+      id: "AUD-003",
+      title: "Organisation access paused",
+      organisation: "ORG-004",
+      name: "Platform owner",
+      date: "12 Nov 2026",
+      status: "Recorded",
+      description: "East Ward Mahallu marked inactive.",
+    },
+  ].map(normalizeRow),
+  platformNotices: [
+    {
+      id: "NOTICE-001",
+      title: "Annual programme onboarding",
+      message: "Organisation setup reviews are now available for the upcoming Aḍḥiyah season.",
+      audience: "All organisations",
+      status: "Published",
+      date: "14 Nov 2026",
+    },
+  ].map(normalizeRow),
+  platformSettings: [
+    {
+      id: "SETTINGS",
+      name: "QurbaniOS",
+      contact: "support@qurbanios.example",
+      status: "Operational",
+      plan: "Community",
+      locality: "Asia/Kolkata",
+      registration: "Committee review required",
+      notices: "Enabled",
+    },
+  ].map(normalizeRow),
+};

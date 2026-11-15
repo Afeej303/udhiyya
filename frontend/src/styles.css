@@ -1,0 +1,180 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@source "./";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 14px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ink: var(--ink);
+  --color-ink-foreground: var(--ink-foreground);
+  --color-ink-soft: var(--ink-soft);
+  --color-lime: var(--lime);
+  --color-coral: var(--coral);
+  --color-cobalt: var(--cobalt);
+  --color-sun: var(--sun);
+  --color-cover-foreground: var(--cover-foreground);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+}
+
+:root {
+  --cover-foreground: oklch(1 0 0);
+  --cover-shade: oklch(0.14 0.02 150 / 93%);
+  --radius: 0.5rem;
+  --background: oklch(0.987 0.002 150);
+  --foreground: oklch(0.19 0.02 265);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.19 0.02 265);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.19 0.02 265);
+  --primary: oklch(0.88 0.17 125);
+  --primary-foreground: oklch(0.19 0.02 265);
+  --secondary: oklch(0.95 0.012 95);
+  --secondary-foreground: oklch(0.19 0.02 265);
+  --muted: oklch(0.95 0.01 95);
+  --muted-foreground: oklch(0.5 0.02 265);
+  --accent: oklch(0.93 0.04 125);
+  --accent-foreground: oklch(0.19 0.02 265);
+  --destructive: oklch(0.62 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.9 0.012 95);
+  --input: oklch(0.9 0.012 95);
+  --ring: oklch(0.55 0.19 258);
+  --ink: oklch(0.19 0.02 265);
+  --ink-foreground: oklch(0.97 0.01 95);
+  --ink-soft: oklch(0.26 0.025 265);
+  --lime: oklch(0.9 0.19 125);
+  --coral: oklch(0.7 0.18 35);
+  --cobalt: oklch(0.43 0.10 165);
+  --sun: oklch(0.87 0.16 85);
+  --chart-1: var(--cobalt);
+  --chart-2: var(--lime);
+  --chart-3: var(--coral);
+  --chart-4: var(--sun);
+  --chart-5: oklch(0.7 0.1 200);
+  --shadow-pop: 4px 4px 0 0 var(--ink);
+  --shadow-soft: 0 1px 2px oklch(0.19 0.02 265 / 6%), 0 12px 32px -12px oklch(0.19 0.02 265 / 18%);
+  --gradient-glow: radial-gradient(60% 60% at 50% 0%, oklch(0.9 0.19 125 / 45%), transparent 70%);
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+  html { scroll-behavior: smooth; }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: 0; }
+}
+
+@utility shadow-pop { box-shadow: var(--shadow-pop); }
+@utility shadow-soft { box-shadow: var(--shadow-soft); }
+@utility bg-glow { background-image: var(--gradient-glow); }
+@utility bg-grid {
+  background-image: linear-gradient(to right, color-mix(in oklab, var(--foreground) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 7%, transparent) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+@utility bg-dots {
+  background-image: radial-gradient(color-mix(in oklab, var(--ink-foreground) 14%, transparent) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+@utility programme-grid {
+  background-image: linear-gradient(to right, color-mix(in oklab, var(--foreground) 5%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 5%, transparent) 1px, transparent 1px), var(--gradient-glow);
+  background-size: 44px 44px, 44px 44px, 100% 100%;
+  background-repeat: repeat, repeat, no-repeat;
+}
+@utility press {
+  transition: transform .15s ease, box-shadow .15s ease;
+  &:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 0 var(--ink); }
+  &:active { transform: translate(2px, 2px); box-shadow: 0 0 0 0 var(--ink); }
+}
+@utility lift {
+  transition: transform .35s cubic-bezier(.2,.8,.2,1), box-shadow .35s;
+  &:hover { transform: translateY(-4px); box-shadow: var(--shadow-soft); }
+}
+@utility text-gradient {
+  background: linear-gradient(100deg, var(--cobalt), var(--coral) 60%, var(--sun));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(24px); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes marquee { to { transform: translateX(-50%); } }
+@keyframes floaty { 0%,100% { transform: translateY(0) rotate(var(--r, 0deg)); } 50% { transform: translateY(-12px) rotate(var(--r, 0deg)); } }
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+@keyframes intro-out { 0%,70% { opacity: 1; } 100% { opacity: 0; visibility: hidden; } }
+@keyframes intro-word { from { transform: translateY(110%); } to { transform: none; } }
+@keyframes bar-grow { from { transform: scaleY(0); } }
+
+@utility animate-rise { animation: rise .8s cubic-bezier(.2,.8,.2,1) both; }
+@utility animate-marquee { animation: marquee 28s linear infinite; }
+@utility animate-floaty { animation: floaty 6s ease-in-out infinite; }
+@utility animate-spin-slow { animation: spin-slow 18s linear infinite; }
+@utility animate-intro { animation: intro-out 2.2s ease forwards; }
+@utility animate-intro-word { animation: intro-word .7s cubic-bezier(.7,0,.2,1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}
+
+@utility cover-shade { background: linear-gradient(90deg, var(--cover-shade) 0%, color-mix(in oklab, var(--cover-shade) 85%, transparent) 30%, transparent 90%); }
+
+@keyframes loading { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@utility animate-loading { animation: loading 2s ease both; }
+@layer base { button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; } input[type=checkbox], input[type=radio] { accent-color: var(--cobalt); } button { cursor: pointer; } }
+@media print { aside, header, footer, button { display: none !important; } body { background: var(--card); } }
+
+@layer base {
+  body { min-width: 320px; }
+  main, section, article, form, dl { min-width: 0; }
+  input, select, textarea { max-width: 100%; }
+  p, dd { overflow-wrap: anywhere; }
+}
+.record-table th, .record-table td { overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+  .record-table, .record-table tbody { display: block; width: 100%; }
+  .record-table thead { display: none; }
+  .record-table tr { display: block; padding: 12px 4px; }
+  .record-table td { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); align-items: start; gap: 12px; padding: 8px 12px; width: 100%; }
+  .record-table td::before { content: attr(data-label); font-size: 12px; font-weight: 400; color: var(--muted-foreground); }
+  .record-table td > * { min-width: 0; }
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .lift:hover, .press:hover { transform: none; }
+}
