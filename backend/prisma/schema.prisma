@@ -84,6 +84,8 @@ model User {
 
   volunteerAssignments Volunteer[]
 
+  beneficiaryLinks Beneficiary[]
+
   @@index([status])
   @@index([deletedAt])
   @@index([activeOrganizationId])
@@ -388,6 +390,11 @@ model Programme {
   volunteers Volunteer[]
   schedules  Schedule[]
 
+  beneficiaries      Beneficiary[]
+  distributionPolicy DistributionPolicy?
+  collectionWindows  CollectionWindow[]
+
+  @@unique([id, organizationId])
   @@unique([organizationId, year])
   @@index([organizationId, id])
   @@map("programmes")
@@ -405,7 +412,9 @@ model Household {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
-  @@index([organizationId, id])
+  beneficiaries Beneficiary[]
+
+  @@unique([organizationId, id])
   @@map("households")
 }
 
@@ -473,6 +482,8 @@ model Registration {
   shareAllocation ShareAllocation?
   payments        Payment[]
   receipts        Receipt[]
+
+  distributionAllocations DistributionAllocation[]
 
   @@unique([programmeId, id])
   @@unique([programmeId, applicantId])
@@ -748,4 +759,100 @@ model OperationIssue {
   @@index([programmeId, id])
   @@index([programmeId, reporterId])
   @@map("operation_issues")
+}
+
+enum EligibilityStatus {
+  pending
+  approved
+  rejected
+}
+
+enum DistributionRecipient {
+  participant
+  beneficiary
+}
+
+enum DistributionStatus {
+  draft
+  confirmed
+  packed
+  collected
+  delivered
+  cancelled
+}
+
+model Beneficiary {
+  id              String            @id @default(uuid()) @db.Uuid
+  programmeId     String            @map("programme_id") @db.Uuid
+  organizationId  String            @map("organization_id") @db.Uuid
+  householdId     String            @map("household_id") @db.Uuid
+  userId          String?           @map("user_id") @db.Uuid
+  eligibility     EligibilityStatus @default(pending)
+  reason          String?
+  accessEmail     String?           @map("access_email")
+  accessTokenHash String?           @unique @map("access_token_hash")
+  accessExpiresAt DateTime?         @map("access_expires_at") @db.Timestamptz(3)
+
+  programme   Programme                @relation(fields: [programmeId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  household   Household                @relation(fields: [organizationId, householdId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+  user        User?                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  allocations DistributionAllocation[]
+
+  @@unique([programmeId, id])
+  @@unique([programmeId, userId])
+  @@unique([programmeId, householdId])
+  @@map("beneficiaries")
+}
+
+model DistributionPolicy {
+  programmeId          String  @id @map("programme_id") @db.Uuid
+  participantsEnabled  Boolean @map("participants_enabled")
+  gramsPerShare        Int     @map("grams_per_share")
+  beneficiariesEnabled Boolean @map("beneficiaries_enabled")
+  gramsPerHousehold    Int     @map("grams_per_household")
+  publicGuidance       String  @map("public_guidance")
+
+  programme Programme @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+
+  @@map("distribution_policies")
+}
+
+model CollectionWindow {
+  id           String   @id @default(uuid()) @db.Uuid
+  programmeId  String   @map("programme_id") @db.Uuid
+  location     String
+  startsAt     DateTime @map("starts_at") @db.Timestamptz(3)
+  endsAt       DateTime @map("ends_at") @db.Timestamptz(3)
+  instructions String
+
+  programme   Programme                @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  allocations DistributionAllocation[]
+
+  @@unique([programmeId, id])
+  @@map("collection_windows")
+}
+
+model DistributionAllocation {
+  id                  String                @id @default(uuid()) @db.Uuid
+  programmeId         String                @map("programme_id") @db.Uuid
+  recipientType       DistributionRecipient @map("recipient_type")
+  registrationId      String?               @map("registration_id") @db.Uuid
+  beneficiaryId       String?               @map("beneficiary_id") @db.Uuid
+  quantityGrams       Int                   @map("quantity_grams")
+  collectionWindowId  String                @map("collection_window_id") @db.Uuid
+  status              DistributionStatus    @default(draft)
+  collectionReference String?               @unique @map("collection_reference") @db.Uuid
+  packedAt            DateTime?             @map("packed_at") @db.Timestamptz(3)
+  handedOffAt         DateTime?             @map("handed_off_at") @db.Timestamptz(3)
+
+  registration     Registration?    @relation(fields: [programmeId, registrationId], references: [programmeId, id], onDelete: Restrict, onUpdate: Restrict)
+  beneficiary      Beneficiary?     @relation(fields: [programmeId, beneficiaryId], references: [programmeId, id], onDelete: Restrict, onUpdate: Restrict)
+  collectionWindow CollectionWindow @relation(fields: [programmeId, collectionWindowId], references: [programmeId, id], onDelete: Restrict)
+
+  @@index([programmeId, id])
+  @@index([programmeId, status])
+  @@index([programmeId, collectionWindowId])
+  @@index([programmeId, registrationId])
+  @@index([programmeId, beneficiaryId])
+  @@map("distribution_allocations")
 }

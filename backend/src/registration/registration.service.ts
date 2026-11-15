@@ -297,6 +297,30 @@ export class RegistrationService {
           orderBy: { startsAt: 'asc' },
         })
       : [];
+    const distribution = await this.prisma.distributionAllocation.findFirst({
+      where: {
+        programmeId: scope.programmeId,
+        registrationId: registration.id,
+        status: { in: ['confirmed', 'packed', 'collected', 'delivered'] },
+      },
+      select: {
+        id: true,
+        status: true,
+        quantityGrams: true,
+        collectionReference: true,
+        packedAt: true,
+        handedOffAt: true,
+        collectionWindow: {
+          select: {
+            id: true,
+            location: true,
+            startsAt: true,
+            endsAt: true,
+            instructions: true,
+          },
+        },
+      },
+    });
     return {
       registration,
       assignment: allocation
@@ -307,7 +331,7 @@ export class RegistrationService {
           }
         : null,
       operations: operations.length ? operations : null,
-      distribution: null,
+      distribution,
     };
   }
 
@@ -390,6 +414,20 @@ export class RegistrationService {
           throw new ConflictException(
             'Resolve payments before cancelling registration',
           );
+      }
+      if (
+        status === 'cancelled' &&
+        (await tx.distributionAllocation.count({
+          where: {
+            programmeId: scope.programmeId,
+            registrationId: id,
+            status: { not: 'cancelled' },
+          },
+        }))
+      ) {
+        throw new ConflictException(
+          'Resolve distribution allocations before cancelling registration',
+        );
       }
       const changed = await tx.registration.update({
         where: { id, programmeId: scope.programmeId },

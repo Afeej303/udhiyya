@@ -347,6 +347,19 @@ export class AnimalsService {
           'Cannot release shares after slaughter has been scheduled',
         );
       }
+      if (
+        await tx.distributionAllocation.count({
+          where: {
+            programmeId: scope.programmeId,
+            registrationId: allocation.registrationId,
+            status: { in: ['confirmed', 'packed', 'collected', 'delivered'] },
+          },
+        })
+      ) {
+        throw new ConflictException(
+          'Resolve confirmed distribution before releasing shares',
+        );
+      }
       const deleted = await tx.shareAllocation.deleteMany({
         where: { id, programmeId: scope.programmeId },
       });

@@ -162,6 +162,20 @@ export class EmailService {
     });
   }
 
+  sendBeneficiaryAccessEmail(to: string, organizationId: string, programmeId: string, token: string): void {
+    const url = new URL('/beneficiary/access', this.frontendUrl);
+    url.searchParams.set('organisationId', organizationId);
+    url.searchParams.set('programmeId', programmeId);
+    url.hash = new URLSearchParams({ token }).toString();
+    this.enqueueNonBlocking({
+      to,
+      subject: 'Your QurbaniOS beneficiary access',
+      text: 'Sign in with this verified email address and open your access link within seven days. ' + url.toString(),
+      html: '',
+      templateType: 'beneficiary_access',
+    });
+  }
+
   sendLoginNotificationEmail(params: {
     to: string;
     name: string;

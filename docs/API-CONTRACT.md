@@ -172,16 +172,18 @@ Operations and volunteer routes are implemented locally. Provisioned volunteers 
 |---|---|---|
 | ADM14 | P GET/POST /beneficiaries, GET/PATCH /beneficiaries/:id | Committee. Create `{ householdId }`, maintain recipient details and verify eligibility through an explicit status action below. |
 | ADM14 | P POST /beneficiaries/:id/eligibility | Committee. `{ action: "approve"|"reject", reason? }` → eligibility summary. |
-| ADM14, BEN01 | P POST /beneficiaries/:id/access, POST /me/beneficiary-access/accept | Committee issues access instructions. Verified recipient completes account linking. Delivery mechanism, proof payload and expiry TBD. |
+| ADM14, BEN01 | P POST /beneficiaries/:id/access, POST /me/beneficiary-access/accept | Committee issues access instructions. Verified recipient completes account linking. Email provides a single-use link for the verified address, valid for seven days. Accept sends `{ token }`. |
 | BEN02–BEN06 | P GET /me/beneficiary, GET /me/beneficiary/distribution | Linked recipient. Own household projection and eligibility, plus confirmed allocation/collection and tracking. Allocation is null before confirmation. |
-| ADM14 | P GET/PUT /distribution/policy | Committee. Return/update participant and public eligibility rules and ration quantities. Exact rule shape TBD. |
+| ADM14 | P GET/PUT /distribution/policy | Committee. Return/update participant and public eligibility rules and ration quantities. `{ participant: { enabled, gramsPerShare }, public: { enabled, gramsPerHousehold, guidance } }`. |
 | ADM15 | P GET /distribution/inventory | Committee. `{ recordedGrams, allocatedGrams, availableGrams }` derived from actual processing records. |
 | ADM15 | P GET/POST /distribution/allocations | Committee. `{ recipientType, recipientId, quantityGrams, collectionWindowId }` → draft allocation. |
 | ADM15 | P POST /distribution/allocations/:id/transition | Committee. `{ action: "confirm"|"pack"|"cancel" }` → allocation. Confirmation and inventory reservation are atomic. |
 | ADM15 | P GET/POST /distribution/collection-windows, PATCH /distribution/collection-windows/:id | Committee. `{ location, startsAt, endsAt, instructions }`. |
-| VOL03 distribution | P GET /volunteer/distribution/queue, POST /volunteer/distribution/allocations/:id/handoff | Assigned distribution volunteer. List assigned packages. Handoff takes `{ outcome: "collected"|"delivered", recipientProof }` and returns updated allocation. Proof format TBD. |
+| VOL03 distribution | P GET /volunteer/distribution/queue, POST /volunteer/distribution/allocations/:id/handoff | Assigned distribution volunteer. List assigned packages. Handoff takes `{ outcome: "collected"|"delivered", recipientProof }` and returns updated allocation. Send the recipient-owned `collectionReference` UUID as `recipientProof`. |
 
 Beneficiary eligibility proposes pending → approved/rejected. Distribution proposes draft → confirmed → packed → collected/delivered. Committee cancellation and adjustment policy must define when reserved stock is released. Participant and beneficiary recipient IDs resolve through separate records and share inventory accounting. A handoff can only consume a confirmed and packed allocation once.
+
+Distribution is implemented locally. The beneficiary email link points to `/beneficiary/access?organisationId=<id>&programmeId=<id>#token=<token>` on the SPA. The invite recipient signs in with the verified household email, then submits the fragment token. Eligibility and linkage are separate from participant registration. A confirmed allocation reserves stock from completed processing. Cancelling an unhanded-off allocation releases it. Pack before handoff. A volunteer must have a distribution task with the allocation ID as its `resourceId`. The owner sees a collection reference in the private distribution response. The volunteer queue and committee allocation list omit it.
 
 ### Communications, reporting and closure
 

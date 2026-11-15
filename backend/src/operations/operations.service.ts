@@ -760,7 +760,14 @@ export class OperationsService {
               },
             })
           : input.department === 'distribution'
-            ? null
+            ? await tx.distributionAllocation.findFirst({
+                where: {
+                  id: input.resourceId,
+                  programmeId: scope.programmeId,
+                  status: { in: ['confirmed', 'packed'] },
+                },
+                select: { id: true },
+              })
             : await tx.animal.findFirst({
                 where: { id: input.resourceId, programmeId: scope.programmeId },
               });
