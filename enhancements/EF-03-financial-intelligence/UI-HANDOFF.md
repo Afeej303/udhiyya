@@ -5,7 +5,7 @@ For M1's agent. One page — read it, adapt the view, keep the controller.
 - **Slot:** `financial-intelligence-slot` (Finance & Committee Dashboards, from `docs/FRONTEND-NEEDS.md`)
 - **Flag:** `FEATURE_EF_03` (frontend: `VITE_FEATURE_EF_03 === 'off'` renders null; backend returns 403 when off)
 - **Controller (do not change; `ASK M3` if it must):** `enhancements/EF-03-financial-intelligence/frontend/FinancialIntelligencePanel.tsx`
-- **View (replace or restyle freely):** The JSX return value inside `FinancialIntelligencePanel.tsx`
+- **View (replace or restyle freely):** `enhancements/EF-03-financial-intelligence/frontend/FinancialIntelligenceView.tsx` (~130 lines basic view)
 - **Sandbox (mock data, no backend needed):** `enhancements/EF-03-financial-intelligence/sandbox/SandboxApp.tsx`
 - **Extension API used:**
   - `GET /api/ext/EF-03/summary?programmeId=:id` — financial reconciliation overview (expected/collected revenue, outstanding, categorised expenses, net balance, surplus indicator)
@@ -13,13 +13,26 @@ For M1's agent. One page — read it, adapt the view, keep the controller.
   - `POST /api/ext/EF-03/categorise` — auto-categorises expenses based on category heuristics & keywords
   - `GET /api/ext/EF-03/categories` — list of supported expense categories and metadata
 
-## Props in
+## Separation of Concerns
+
+1. **Controller (`FinancialIntelligencePanel.tsx`):**
+   - Manages API calls, error boundaries, loading/disabled flags, and form submission events.
+   - Passes clean `FinancialIntelligenceViewProps` to the view.
+   - Supports injecting a custom `ViewComponent` prop or replacing `FinancialIntelligenceView.tsx`.
+
+2. **Basic View (`FinancialIntelligenceView.tsx`):**
+   - Thin, replaceable presentation layer (~130 lines).
+   - Contains raw unstyled markup and all contract test IDs.
+   - M1 restyles this using project Tailwind tokens and design system primitives.
+
+## Props in (Controller)
 
 | Prop | Type | Meaning |
 |---|---|---|
 | `programmeId` | `number` | The active programme ID to inspect and reconcile |
 | `initialSummary` | `FinancialSummaryResult` (optional) | Preloaded financial reconciliation summary |
 | `initialAnomalies` | `FinancialAnomaly[]` (optional) | Preloaded financial anomalies list |
+| `ViewComponent` | `React.FC<FinancialIntelligenceViewProps>` (optional) | Custom view component to override default basic view |
 | `apiBaseUrl` | `string` (optional) | Base URL for API calls (defaults to `/api/ext/EF-03`) |
 | `authToken` | `string` (optional) | Bearer token for authorization if called outside standard session |
 
@@ -63,7 +76,7 @@ None (Self-contained financial reconciliation and categorisation panel).
 ## Adaptation checklist
 
 - [ ] Controller untouched (`FinancialIntelligencePanel.tsx` state management, fetch hooks, error handling)
-- [ ] View restyled with the design system tokens (`--lime`, `--cobalt`, `--coral`, shadcn/ui primitives)
+- [ ] View (`FinancialIntelligenceView.tsx`) restyled with the design system tokens (`--lime`, `--cobalt`, `--coral`, shadcn/ui primitives)
 - [ ] All 4 states present: loading, empty, error, success
 - [ ] All `data-testid` attributes preserved
 - [ ] Mounted in `financial-intelligence-slot` behind `FEATURE_EF_03` flag; renders `null` when flag is absent or disabled

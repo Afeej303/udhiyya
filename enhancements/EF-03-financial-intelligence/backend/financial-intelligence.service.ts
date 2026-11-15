@@ -181,6 +181,7 @@ export interface PrismaLike {
       allocation?: { id: number; animalId?: number } | null;
       payments?: Array<{
         id: number;
+        amount?: number;
         amountMinor?: number;
         amountCents?: number;
         reference?: string;
@@ -193,6 +194,7 @@ export interface PrismaLike {
     findMany: (args?: any) => Promise<Array<{
       id: number;
       participantId: number;
+      amount?: number;
       amountMinor?: number;
       amountCents?: number;
       reference?: string;
