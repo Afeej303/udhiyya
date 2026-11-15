@@ -38,6 +38,8 @@ import {
   type Row,
   normalizeRow,
 } from "@/lib/workflow";
+import { useAuth } from "@/services/auth";
+import { ProgrammeSetupSection } from "./ProgrammeSetupSection";
 const config: Record<
   string,
   {
@@ -243,6 +245,7 @@ const config: Record<
   },
 };
 export function AdminWorkspace({ section }: { section: string }) {
+  const { profile } = useAuth();
   const { records, update, add, programmeStatus, setProgrammeStatus, policy, setPolicy } =
     useDemo();
   const [search, setSearch] = useState("");
@@ -832,90 +835,7 @@ export function AdminWorkspace({ section }: { section: string }) {
         </>
       )}
       {section === "programme-setup" && (
-        <>
-          <div className="mb-7 flex flex-wrap items-center gap-3">
-            <Status>{programmeStatus}</Status>
-            <Link to="/" className={btn({ variant: "outline", size: "sm" })}>
-              <Eye className="size-4" />
-              Preview public information
-            </Link>
-          </div>
-          <form
-            className="grid w-full min-w-0 max-w-4xl gap-8"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const data = new FormData(e.currentTarget);
-              setProgrammeStatus(String(data.get("status")));
-              toast.success("Programme settings saved for this preview session.");
-            }}
-          >
-            <section className="min-w-0">
-              <h2 className="mb-5 text-lg font-bold">Basic information</h2>
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Programme name" defaultValue="Aḍḥiyah Community Programme" required />
-                <Field label="Programme year" defaultValue="2027" type="number" />
-                <Field label="Locality" defaultValue={sample.locality} />
-                <Field label="Public contact" defaultValue="committee@example.com" />
-              </div>
-            </section>
-            <section className="border-t border-border pt-6">
-              <h2 className="mb-5 text-lg font-bold">Schedule & participation</h2>
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Registration opens" type="date" defaultValue="2027-05-01" />
-                <Field label="Registration closes" type="date" defaultValue="2027-05-20" />
-                <Field label="Programme date — unconfirmed" type="date" />
-                <Field label="Share price — sample" type="number" defaultValue={sample.price} />
-                <Field
-                  label="Maximum shares per cattle group"
-                  type="number"
-                  defaultValue={7}
-                  min={1}
-                />
-                <SelectField
-                  name="status"
-                  label="Public registration status"
-                  options={["Draft", "Registration open", "Registration closed", "Completed"]}
-                  value={programmeStatus}
-                  onChange={setProgrammeStatus}
-                />
-              </div>
-              <label className="mt-5 block text-sm font-medium">
-                Guidelines & eligibility
-                <textarea
-                  className="mt-2 min-h-24 w-full rounded-lg border border-border bg-card p-3 text-sm"
-                  defaultValue="Committee-reviewed household participation. Separate public distribution eligibility. No personal recipient data shared publicly."
-                />
-              </label>
-            </section>
-            <div className="flex flex-wrap gap-3">
-              <Button type="submit">Save programme</Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setProgrammeStatus("Draft");
-                  toast.success("Saved as draft");
-                }}
-              >
-                Save as draft
-              </Button>
-              <Button
-                type="button"
-                variant="ink"
-                onClick={() => {
-                  setProgrammeStatus("Registration open");
-                  toast.success("Programme published. Registrations open in this preview.");
-                }}
-              >
-                Publish & open registration
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Sample programme settings. Only status updates the public preview; pricing and dates
-              shown elsewhere remain illustrative.
-            </p>
-          </form>
-        </>
+        <ProgrammeSetupSection orgId={profile?.orgId || "org_demo"} />
       )}
       {section === "finance" && (
         <>

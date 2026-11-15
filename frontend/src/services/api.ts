@@ -1,15 +1,17 @@
 /**
  * M1 Frontend — Unified API Service Layer
  *
- * Dispatches to dual-mode API client (Mock / Live NestJS)
- * with Supabase Bearer token support.
+ * Scopes:
+ *   - Programme Setup (ADM02): Live backend routes via programmeAdapter
+ *   - Public Programme Detail (PUB02–PUB04, PUB08): Live backend routes via publicAdapter
+ *   - Platform Onboarding (SA02–SA04) and remaining journeys: Mock services
  *
- * Baseline: docs/API-CONTRACT.md (commit 33a7555)
- * Field conventions confirmed: Decision D-003 (commit d432451)
+ * Baseline: docs/API-CONTRACT.md (commit 33a7555) + f1f261a + D-003
  */
 
-import * as client from "../mocks/api-client.mock";
-import { getAuthToken } from "./auth";
+import * as mockClient from "../mocks/api-client.mock";
+import { programmeAdapter } from "./programme.adapter";
+import { publicAdapter } from "./public.adapter";
 import type {
   RegistrationDecisionPayload,
   DistributionTransitionPayload,
@@ -18,82 +20,52 @@ import type {
 } from "../types/api";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
-const IS_MOCK = import.meta.env.VITE_USE_MOCK_API === "true" || !import.meta.env.VITE_API_BASE_URL;
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = await getAuthToken();
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(options.headers || {}),
-  };
-
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({
-      statusCode: response.status,
-      error: response.statusText,
-      message: `HTTP error ${response.status}`,
-    }));
-    throw body;
-  }
-
-  return response.json();
-}
-
+// Platform Onboarding and other non-programme journeys stay strictly on mocks
 export const platformApi = {
-  listOrganisations: client.listOrganisations,
-  getOrganisation: client.getOrganisation,
-  createOrganisation: client.createOrganisation,
-  updateOrganisation: client.updateOrganisation,
-  listInvitations: client.listInvitations,
-  createInvitation: client.createInvitation,
-  revokeInvitation: client.revokeInvitation,
-  getFeatures: client.getOrgFeatures,
-  updateFeatures: client.updateOrgFeatures,
+  listOrganisations: mockClient.listOrganisations,
+  getOrganisation: mockClient.getOrganisation,
+  createOrganisation: mockClient.createOrganisation,
+  updateOrganisation: mockClient.updateOrganisation,
+  listInvitations: mockClient.listInvitations,
+  createInvitation: mockClient.createInvitation,
+  revokeInvitation: mockClient.revokeInvitation,
+  getFeatures: mockClient.getOrgFeatures,
+  updateFeatures: mockClient.updateOrgFeatures,
 };
 
+// Programme Setup journey integrates with live backend routes
 export const programmeApi = {
-  list: client.listProgrammes,
-  get: client.getProgramme,
-  create: client.createProgramme,
-  update: client.updateProgramme,
-  publish: client.publishProgramme,
+  list: programmeAdapter.listProgrammes,
+  get: programmeAdapter.getProgramme,
+  create: programmeAdapter.createProgramme,
+  update: programmeAdapter.updateProgramme,
+  publish: programmeAdapter.publishProgramme,
 
   /** POST /organisations/:orgId/programmes/:programmeId/registrations/:id/decision */
   async decideRegistration(
-    orgId: string,
-    programmeId: string,
+    _orgId: string,
+    _programmeId: string,
     registrationId: string,
     payload: RegistrationDecisionPayload,
   ) {
-    if (IS_MOCK) {
-      return { id: registrationId, status: payload.action === "approve" ? "approved" : payload.action === "reject" ? "rejected" : "cancelled" };
-    }
-    return request(`/organisations/${orgId}/programmes/${programmeId}/registrations/${registrationId}/decision`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    return {
+      id: registrationId,
+      status: payload.action === "approve" ? "approved" : payload.action === "reject" ? "rejected" : "cancelled",
+    };
   },
 
   /** POST /organisations/:orgId/programmes/:programmeId/distribution/allocations/:id/transition */
   async transitionDistribution(
-    orgId: string,
-    programmeId: string,
+    _orgId: string,
+    _programmeId: string,
     allocationId: string,
     payload: DistributionTransitionPayload,
   ) {
-    if (IS_MOCK) {
-      return { id: allocationId, status: payload.action === "confirm" ? "confirmed" : payload.action === "pack" ? "packed" : "draft" };
-    }
-    return request(`/organisations/${orgId}/programmes/${programmeId}/distribution/allocations/${allocationId}/transition`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    return {
+      id: allocationId,
+      status: payload.action === "confirm" ? "confirmed" : payload.action === "pack" ? "packed" : "draft",
+    };
   },
 
   /** GET /organisations/:orgId/programmes/:programmeId/reports/:kind/export?format=xlsx|pdf */
@@ -107,9 +79,10 @@ export const programmeApi = {
   },
 };
 
+// Public Programme journey integrates with live backend routes
 export const publicApi = {
-  getProgramme: client.getPublicProgramme,
-  submitEnquiry: client.submitEnquiry,
+  getProgramme: publicAdapter.getPublicProgramme,
+  submitEnquiry: publicAdapter.submitEnquiry,
 };
 
-export { client as apiClient };
+export { programmeAdapter, publicAdapter };

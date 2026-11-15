@@ -1,13 +1,15 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, Check, MapPin, Mail, Phone, HandHeart } from "lucide-react";
+import { ArrowUpRight, Check, MapPin, Mail, Phone, HandHeart, Loader2 } from "lucide-react";
 import { PublicShell } from "./PublicShell";
 import { btn, Button } from "./Btn";
 import { PageTitle, Metrics, Timeline, Status, Modal } from "./WorkflowUI";
 import { Field } from "./AuthShell";
 import { useDemo } from "./DemoStore";
 import { money, sample } from "@/lib/workflow";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { publicApi } from "@/services/api";
+import type { PublicProgramme } from "@/types/api";
 export type PublicSection =
   | "programme"
   | "about"
@@ -21,6 +23,31 @@ export type PublicSection =
 export function ProgrammePage({ section }: { section: PublicSection }) {
   const { records, programmeStatus } = useDemo();
   const [enquiry, setEnquiry] = useState(false);
+  const [publicProg, setPublicProg] = useState<PublicProgramme | null>(null);
+  const [loadingProg, setLoadingProg] = useState(false);
+  const [enquiryName, setEnquiryName] = useState("");
+  const [enquiryEmail, setEnquiryEmail] = useState("");
+  const [enquiryMessage, setEnquiryMessage] = useState("");
+  const [submittingEnquiry, setSubmittingEnquiry] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoadingProg(true);
+    publicApi
+      .getProgramme("org_demo", 2027)
+      .then((prog) => {
+        if (active) setPublicProg(prog);
+      })
+      .catch((err) => {
+        console.warn("[ProgrammePage] Public programme fetch:", err);
+      })
+      .finally(() => {
+        if (active) setLoadingProg(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   const titles: Record<PublicSection, string> = {
     programme: "Our progress. Open to everyone.",
     about: "Faith in action. Care in common.",
@@ -69,9 +96,8 @@ export function ProgrammePage({ section }: { section: PublicSection }) {
                   One Mahallu. A collective responsibility.
                 </h2>
                 <p className="mt-4 leading-relaxed text-muted-foreground">
-                  Our annual Aḍḥiyah programme brings households together to participate, prepare
-                  and distribute with care. The committee oversees every stage, with dedicated teams
-                  for slaughter, processing, distribution and finance.
+                  {publicProg?.description ||
+                    "Our annual Aḍḥiyah programme brings households together to participate, prepare and distribute with care. The committee oversees every stage, with dedicated teams for slaughter, processing, distribution and finance."}
                 </p>
                 <p className="mt-4 leading-relaxed text-muted-foreground">
                   Participant allocations and eligible public beneficiary allocations follow
@@ -117,18 +143,22 @@ export function ProgrammePage({ section }: { section: PublicSection }) {
             <div className="mb-10 grid gap-6 md:grid-cols-3">
               <div className="border-l-2 border-cobalt pl-5">
                 <p className="text-sm text-muted-foreground">Share contribution</p>
-                <p className="mt-2 text-4xl font-bold">{money(sample.price)}</p>
+                <p className="mt-2 text-4xl font-bold">
+                  {publicProg?.price ? money(publicProg.price.amountMinor / 100) : money(sample.price)}
+                </p>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Per cattle share · illustrative price
+                  Per cattle share · {publicProg?.price ? "Confirmed by committee" : "Illustrative price"}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Registration period</p>
                 <p className="mt-3 font-semibold">
-                  {sample.opening} — {sample.deadline}
+                  {publicProg?.registrationOpensAt && publicProg?.registrationClosesAt
+                    ? `${new Date(publicProg.registrationOpensAt).toLocaleDateString()} — ${new Date(publicProg.registrationClosesAt).toLocaleDateString()}`
+                    : `${sample.opening} — ${sample.deadline}`}
                 </p>
                 <div className="mt-3">
-                  <Status>{programmeStatus}</Status>
+                  <Status>{publicProg?.status === "published" ? "Registration open" : programmeStatus}</Status>
                 </div>
               </div>
               <div>
@@ -139,6 +169,14 @@ export function ProgrammePage({ section }: { section: PublicSection }) {
                 </p>
               </div>
             </div>
+            {publicProg?.guidelines && (
+              <div className="mb-8 rounded-lg border border-border bg-card p-5">
+                <h3 className="text-sm font-semibold mb-2">Committee Notice</h3>
+                <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-line">
+                  {publicProg.guidelines}
+                </p>
+              </div>
+            )}
             <h2 className="mb-5 text-xl font-bold">Participation guidelines</h2>
             <ul className="space-y-5">
               {[
@@ -291,30 +329,71 @@ export function ProgrammePage({ section }: { section: PublicSection }) {
                 </p>
                 <p className="flex items-center gap-3">
                   <Mail className="size-4 text-cobalt" />
-                  committee@example.com
+                  {publicProg?.publicContact?.email || "committee@example.com"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Fictional committee members and sample contact, not monitored.
+                  Official public contact for this programme. Enquiries are received directly by the committee.
                 </p>
               </div>
               <form
                 className="space-y-4"
-                onSubmit={(e) => {
+                onSubmit={async (e) => {
                   e.preventDefault();
-                  toast.success("Sample enquiry recorded. No message was sent.");
-                  e.currentTarget.reset();
+                  if (!enquiryName.trim() || !enquiryEmail.trim() || !enquiryMessage.trim()) {
+                    toast.error("Please fill all enquiry fields");
+                    return;
+                  }
+                  setSubmittingEnquiry(true);
+                  try {
+                    const res = await publicApi.submitEnquiry("org_demo", 2027, {
+                      name: enquiryName.trim(),
+                      replyEmail: enquiryEmail.trim(),
+                      message: enquiryMessage.trim(),
+                    });
+                    toast.success(`Enquiry submitted successfully! Reference ID: ${res.id}`);
+                    setEnquiryName("");
+                    setEnquiryEmail("");
+                    setEnquiryMessage("");
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to submit enquiry");
+                  } finally {
+                    setSubmittingEnquiry(false);
+                  }
                 }}
               >
-                <Field label="Your name" required />
-                <Field label="Email or mobile" required />
+                <Field
+                  label="Your name"
+                  value={enquiryName}
+                  onChange={(e) => setEnquiryName(e.target.value)}
+                  required
+                />
+                <Field
+                  label="Reply email"
+                  type="email"
+                  value={enquiryEmail}
+                  onChange={(e) => setEnquiryEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                />
                 <label className="block text-sm">
                   Message
                   <textarea
                     required
-                    className="mt-2 min-h-24 w-full rounded-lg border border-border bg-card p-3"
+                    value={enquiryMessage}
+                    onChange={(e) => setEnquiryMessage(e.target.value)}
+                    className="mt-2 min-h-24 w-full rounded-lg border border-border bg-card p-3 text-sm focus:border-cobalt focus:ring-2 focus:ring-ring/20 outline-none"
+                    placeholder="Ask about guidelines, registration, or schedule..."
                   />
                 </label>
-                <Button type="submit">Submit enquiry — demo</Button>
+                <Button type="submit" disabled={submittingEnquiry}>
+                  {submittingEnquiry ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" /> Submitting...
+                    </>
+                  ) : (
+                    "Submit enquiry"
+                  )}
+                </Button>
               </form>
             </div>
           </>
