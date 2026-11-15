@@ -1,4 +1,7 @@
-import type { NestExpressApplication } from '@nestjs/platform-express';
+import {
+  FastifyAdapter,
+  type NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
@@ -17,7 +20,19 @@ const profile = {
   emailVerifiedAt: new Date(confirmedAt),
 };
 const assignments = vi.fn().mockResolvedValue([]);
-let app: NestExpressApplication;
+const orgId = 'ae73944a-acf7-4e07-b566-d14d9dc36199';
+const programme = {
+  id: '3eb12077-1049-4c77-a607-39f45b27fd42',
+  organizationId: orgId,
+  year: 2027,
+  title: 'Annual programme',
+  status: 'published',
+  registrationLimit: 50,
+  priceMinor: 100,
+};
+const findProgramme = vi.fn();
+const findMembership = vi.fn().mockResolvedValue(null);
+let app: NestFastifyApplication;
 
 beforeAll(async () => {
   vi.stubEnv('AUTH_MODE', 'supabase');
@@ -45,11 +60,20 @@ beforeAll(async () => {
         findFirst: vi.fn().mockResolvedValue(profile),
       },
       userRole: { findMany: assignments },
+      organizationMember: { findFirst: findMembership },
+      programme: { findFirst: findProgramme },
       role: { findMany: vi.fn().mockResolvedValue([]) },
     })
     .compile();
-  app = module.createNestApplication<NestExpressApplication>({ logger: false });
+  const { configureFastifyApp, setupSwagger } = await import('../main.js');
+  app = module.createNestApplication<NestFastifyApplication>(
+    new FastifyAdapter(),
+    { logger: false },
+  );
+  const appConfig = await configureFastifyApp(app);
+  setupSwagger(app, appConfig);
   await app.init();
+  await app.getHttpAdapter().getInstance().ready();
 });
 
 afterAll(async () => {
@@ -60,7 +84,12 @@ afterAll(async () => {
 
 it('connects Supabase identity to the profile and database-backed permission guard', async () => {
   const client = request(app.getHttpServer());
-  await client.get('/users/me').expect(401);
+  await client
+    .get('/users/me')
+    .expect(401)
+    .expect(({ body }) => {
+      expect(body).toMatchObject({ statusCode: 401, path: '/users/me' });
+    });
   await client
     .get('/users/me')
     .set('Authorization', 'Bearer token')
@@ -83,4 +112,59 @@ it('connects Supabase identity to the profile and database-backed permission gua
     .get('/sessions')
     .set('Authorization', 'Bearer token')
     .expect(404);
+});
+
+it('limits the anonymous programme response to published records and public fields', async () => {
+  const client = request(app.getHttpServer());
+  const url = `/public/organisations/${orgId}/programmes/2027`;
+  findProgramme.mockResolvedValueOnce(null);
+  await client.get(url).expect(404);
+  expect(findProgramme).toHaveBeenLastCalledWith({
+    where: {
+      organizationId: orgId,
+      year: 2027,
+      status: 'published',
+      organization: { status: 'ACTIVE' },
+    },
+  });
+  findProgramme.mockResolvedValueOnce(programme);
+  await client
+    .get(url)
+    .expect(200)
+    .expect(({ body }) => {
+      expect(body).toMatchObject({
+        title: programme.title,
+        price: { amountMinor: 100, currency: 'INR' },
+      });
+      expect(body).not.toHaveProperty('registrationLimit');
+      expect(body).not.toHaveProperty('organisationId');
+    });
+});
+
+it('denies committee programme reads without active membership', async () => {
+  findProgramme.mockClear();
+  await request(app.getHttpServer())
+    .get(`/organisations/${orgId}/programmes/${programme.id}`)
+    .set('Authorization', 'Bearer token')
+    .expect(403);
+  expect(findMembership).toHaveBeenCalledWith(
+    expect.objectContaining({
+      where: expect.objectContaining({
+        organizationId: orgId,
+        status: 'ACTIVE',
+      }),
+    }),
+  );
+  expect(findProgramme).not.toHaveBeenCalled();
+});
+
+it('serves Swagger UI assets with the Fastify adapter', async () => {
+  const client = request(app.getHttpServer());
+  await client
+    .get('/docs-json')
+    .expect(200)
+    .expect(({ body }) => {
+      expect(body.paths).toHaveProperty(['/organisations/{orgId}/programmes']);
+    });
+  await client.get('/docs/swagger-ui.css').expect(200);
 });

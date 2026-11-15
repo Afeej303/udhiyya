@@ -1,3 +1,9 @@
+import fastifyHelmet from '@fastify/helmet';
+import type { INestApplication } from '@nestjs/common';
+import {
+  FastifyAdapter,
+  type NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
@@ -8,32 +14,22 @@ import helmet from 'helmet';
 import { AppModule } from './app.module.js';
 import type { AppConfig } from './config/app.config.js';
 
-export function configureApp(app: NestExpressApplication): AppConfig {
+function configureCommon(app: INestApplication): AppConfig {
   const configService = app.get(ConfigService);
   const appCfg = configService.get<AppConfig>('app');
   if (!appCfg) {
     throw new Error('Application configuration is not loaded');
   }
 
-  if (appCfg.trustProxy) {
-    app.set('trust proxy', 1);
-  }
-
   if (appCfg.apiPrefix) {
     app.setGlobalPrefix(appCfg.apiPrefix);
   }
 
-  app.use(
-    helmet({
-      contentSecurityPolicy: appCfg.nodeEnv === 'production' ? undefined : false,
-      crossOriginEmbedderPolicy: false,
-    }),
-  );
-
-  app.use(cookieParser(appCfg.cookie.secret));
-
   app.enableCors({
-    origin: (origin, callback) => {
+    origin: (
+      origin: string | undefined,
+      callback: (error: Error | null, allow: boolean) => void,
+    ) => {
       if (!origin) {
         callback(null, true);
         return;
@@ -69,7 +65,34 @@ export function configureApp(app: NestExpressApplication): AppConfig {
   return appCfg;
 }
 
-export function setupSwagger(app: NestExpressApplication, appCfg: AppConfig): void {
+export function configureApp(app: NestExpressApplication): AppConfig {
+  const appCfg = configureCommon(app);
+  if (appCfg.trustProxy) {
+    app.set('trust proxy', 1);
+  }
+  app.use(
+    helmet({
+      contentSecurityPolicy:
+        appCfg.nodeEnv === 'production' ? undefined : false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
+  app.use(cookieParser(appCfg.cookie.secret));
+  return appCfg;
+}
+
+export async function configureFastifyApp(
+  app: NestFastifyApplication,
+): Promise<AppConfig> {
+  const appCfg = configureCommon(app);
+  await app.register(fastifyHelmet, {
+    contentSecurityPolicy: appCfg.nodeEnv === 'production' ? undefined : false,
+    crossOriginEmbedderPolicy: false,
+  });
+  return appCfg;
+}
+
+export function setupSwagger(app: INestApplication, appCfg: AppConfig): void {
   const swaggerConfig = new DocumentBuilder()
     .setTitle(`${appCfg.appName} - Authentication & Authorization API`)
     .setDescription(
@@ -100,11 +123,27 @@ export function setupSwagger(app: NestExpressApplication, appCfg: AppConfig): vo
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    bufferLogs: true,
-  });
+  // The starter's legacy cookie endpoints still use the Express response API.
+  const app =
+    process.env.AUTH_MODE === 'supabase'
+      ? await NestFactory.create<NestFastifyApplication>(
+          AppModule,
+          new FastifyAdapter({
+            trustProxy:
+              process.env.TRUST_PROXY === 'true'
+                ? (_address, hop) => hop === 0
+                : false,
+          }),
+          { bufferLogs: true },
+        )
+      : await NestFactory.create<NestExpressApplication>(AppModule, {
+          bufferLogs: true,
+        });
 
-  const appCfg = configureApp(app);
+  const appCfg =
+    app.getHttpAdapter().getType() === 'fastify'
+      ? await configureFastifyApp(app as NestFastifyApplication)
+      : configureApp(app as NestExpressApplication);
   setupSwagger(app, appCfg);
 
   await app.listen(appCfg.port, '0.0.0.0');
@@ -118,7 +157,8 @@ async function bootstrap(): Promise<void> {
 const isEntrypoint =
   typeof process !== 'undefined' &&
   Array.isArray(process.argv) &&
-  (process.argv[1]?.endsWith('main.js') || process.argv[1]?.endsWith('main.ts'));
+  (process.argv[1]?.endsWith('main.js') ||
+    process.argv[1]?.endsWith('main.ts'));
 
 if (isEntrypoint) {
   await bootstrap();

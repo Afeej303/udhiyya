@@ -6,7 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import type { Request, Response } from 'express';
+import { HttpAdapterHost } from '@nestjs/core';
 import { Prisma } from '../../generated/prisma/client.js';
 
 interface ErrorResponsePayload {
@@ -22,10 +22,12 @@ interface ErrorResponsePayload {
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
 
+  constructor(private readonly adapterHost: HttpAdapterHost) {}
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
-    const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request>();
+    const response = ctx.getResponse<unknown>();
+    const request = ctx.getRequest<{ method: string; url: string }>();
 
     const payload = this.buildErrorPayload(exception, request.url);
 
@@ -39,7 +41,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       );
     }
 
-    response.status(payload.statusCode).json(payload);
+    this.adapterHost.httpAdapter.reply(response, payload, payload.statusCode);
   }
 
   private buildErrorPayload(exception: unknown, path: string): ErrorResponsePayload {

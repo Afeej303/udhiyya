@@ -20,6 +20,7 @@ import { EmailModule } from './email/email.module.js';
 import { HealthModule } from './health/health.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
 import { PermissionsModule } from './permissions/permissions.module.js';
+import { ProgrammesModule } from './programmes/programmes.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RolesModule } from './roles/roles.module.js';
 import { LocalSessionsModule } from './sessions/local-sessions.module.js';
@@ -77,6 +78,7 @@ import { UsersModule } from './users/users.module.js';
     RolesModule,
     UsersModule,
     OrganizationsModule,
+    ProgrammesModule,
     ConditionalModule.registerWhen(
       AuthModule,
       (env) => env.AUTH_MODE !== 'supabase',

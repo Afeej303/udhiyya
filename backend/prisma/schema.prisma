@@ -186,6 +186,7 @@ model Organization {
   roles       Role[]
   invitations OrganizationInvitation[]
   auditLogs   AuditLog[]
+  programmes  Programme[]
 
   @@index([status])
   @@map("organizations")
@@ -342,4 +343,30 @@ model AuditLog {
   @@index([action, createdAt])
   @@index([targetType, targetId])
   @@map("audit_logs")
+}
+
+enum ProgrammeStatus {
+  draft
+  published
+}
+
+model Programme {
+  id                   String          @id @default(uuid()) @db.Uuid
+  organizationId       String          @map("organization_id") @db.Uuid
+  year                 Int
+  title                String
+  status               ProgrammeStatus @default(draft)
+  description          String?
+  guidelines           String?
+  publicEmail          String?         @map("public_email")
+  registrationOpensAt  DateTime?       @map("registration_opens_at") @db.Timestamptz(3)
+  registrationClosesAt DateTime?       @map("registration_closes_at") @db.Timestamptz(3)
+  registrationLimit    Int?            @map("registration_limit")
+  priceMinor           Int?            @map("price_minor")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, year])
+  @@index([organizationId, id])
+  @@map("programmes")
 }

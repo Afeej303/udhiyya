@@ -1,6 +1,6 @@
 # QurbaniOS backend (M2)
 
-This is the imported authentication starter for local verification. See
+This backend uses Fastify in Supabase Auth mode and includes programme setup and public programme detail. See
 [architecture](../docs/ARCHITECTURE.md) for the Fastify port and
 [API contract](../docs/API-CONTRACT.md) for the proposed frontend interface.
 

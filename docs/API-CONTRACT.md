@@ -58,6 +58,10 @@ Programme detail and public projection share these proposed fields. The committe
 
 Draft fields other than year and title may be null. Year and organisation identify the public page and are immutable after creation in this proposal. Date fields are ISO 8601 instants. Registration close must follow opening. Capacity is a positive integer and price uses non-negative integer minor units. Suggested publish requirements are description, guidelines, public contact, dates, price and capacity. M1 should show whether registration is upcoming, open or ended separately from publication status.
 
+### Programme implementation notes
+
+The six programme routes in the table are implemented for local verification. The remaining onboarding routes are pending. The programme API trims title whitespace and requires a non-blank title of at most 200 characters. It accepts years 1900–9999 and limits description and guidelines to 10,000 characters each. Public contact uses the email object shown in the example. Date inputs require a timezone offset or UTC designator. Registration limits and amounts must fit a signed 32-bit integer. Programme pagination defaults to 25 and caps at 100. Publishing an already published programme returns its current representation. Updates to a published programme must preserve its required public fields.
+
 ## Errors and UI behavior
 
 ```json
