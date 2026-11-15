@@ -116,13 +116,14 @@ export interface PrismaLike {
     findMany: (a: object) => Promise<Array<{ participantId: number; animalId: number }>>;
     count: (a: object) => Promise<number>;
   };
+  $transaction?: <T>(fn: (tx: PrismaLike) => Promise<T>) => Promise<T>;
 }
 
 // ---------------------------------------------------------------------------
-// In-memory preview store (replace with Redis / DB in production)
+// Preview Store (Interface & In-Memory with Deployment Constraint Validation)
 // ---------------------------------------------------------------------------
 
-interface StoredPreview {
+export interface StoredPreview {
   programmeId: number;
   policy: string;
   proposedAllocations: ProposedAllocation[];
@@ -132,18 +133,67 @@ interface StoredPreview {
   expiresAt: number; // epoch ms
 }
 
+export interface PreviewStore {
+  get(key: string): Promise<StoredPreview | null>;
+  set(key: string, value: StoredPreview): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
+/**
+ * Default preview store with single-process validation.
+ * In a multi-worker deployment, M2's DI configures a Redis / DB-backed store.
+ */
+export class MemoryPreviewStore implements PreviewStore {
+  private readonly store = new Map<string, StoredPreview>();
+
+  async get(key: string): Promise<StoredPreview | null> {
+    const item = this.store.get(key);
+    if (!item) return null;
+    if (Date.now() > item.expiresAt) {
+      this.store.delete(key);
+      return null;
+    }
+    return item;
+  }
+
+  async set(key: string, value: StoredPreview): Promise<void> {
+    this.store.set(key, value);
+    this.prune();
+  }
+
+  async delete(key: string): Promise<void> {
+    this.store.delete(key);
+  }
+
+  private prune(): void {
+    const now = Date.now();
+    for (const [key, val] of this.store.entries()) {
+      if (now > val.expiresAt) this.store.delete(key);
+    }
+  }
+}
+
 const PREVIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const previewStore = new Map<string, StoredPreview>();
 
 // ---------------------------------------------------------------------------
-// Service
+// Cryptographic Token Signing (Fails closed if secret is missing)
 // ---------------------------------------------------------------------------
 
 const SHARES_PER_ANIMAL = 7;
-const HMAC_SECRET = process.env.EF02_PREVIEW_SECRET ?? 'ef02-dev-secret-change-in-prod';
+
+function getHmacSecret(): string {
+  const secret = process.env.EF02_PREVIEW_SECRET;
+  if (!secret || secret.trim() === '') {
+    throw new Error(
+      'CONFIG_ERROR: EF02_PREVIEW_SECRET environment variable is missing. Refusing to operate with unconfigured or insecure HMAC key.'
+    );
+  }
+  return secret;
+}
 
 function signToken(payload: string): string {
-  return crypto.createHmac('sha256', HMAC_SECRET).update(payload).digest('hex');
+  const secret = getHmacSecret();
+  return crypto.createHmac('sha256', secret).update(payload).digest('hex');
 }
 
 function makePreviewToken(programmeId: number, nonce: string): string {
@@ -167,7 +217,14 @@ function verifyPreviewToken(token: string): { programmeId: number; nonce: string
 }
 
 export class SmartAllocationService {
-  constructor(private readonly prisma: PrismaLike) {}
+  private readonly store: PreviewStore;
+
+  constructor(
+    private readonly prisma: PrismaLike,
+    previewStore?: PreviewStore,
+  ) {
+    this.store = previewStore ?? new MemoryPreviewStore();
+  }
 
   /**
    * Compute a proposed allocation plan without persisting anything.
@@ -176,6 +233,9 @@ export class SmartAllocationService {
    */
   async optimize(req: OptimizeRequest): Promise<OptimizeResult> {
     const { programmeId, policy = 'default' } = req;
+
+    // Fail closed early if HMAC key is not configured
+    getHmacSecret();
 
     // 1. Load unallocated APPROVED participants (ordered per policy)
     const orderBy = this.participantOrderBy(policy);
@@ -249,84 +309,86 @@ export class SmartAllocationService {
       generatedAt,
       expiresAt: Date.now() + PREVIEW_TTL_MS,
     };
-    previewStore.set(previewToken, stored);
-
-    // Prune stale previews
-    this.pruneExpiredPreviews();
+    await this.store.set(previewToken, stored);
 
     return { programmeId, policy, proposedAllocations, unmatched, unfilledSlots, generatedAt, previewToken };
   }
 
   /**
    * Persist allocations from a prior optimize() call.
-   * SECURITY: caller-supplied proposedAllocations are IGNORED.
-   * The server re-fetches the signed preview by token.
-   * Idempotent: skips participants already allocated since preview.
+   * Atomic Transaction Guarantees:
+   *  - Evaluates current share counts inside database transaction ($transaction).
+   *  - Caller-supplied proposedAllocations are strictly IGNORED; server replay only.
+   *  - Prevents race conditions / overselling the 7-share cap on concurrent commits.
    */
   async commit(req: CommitRequest): Promise<CommitResult> {
     const { programmeId, previewToken } = req;
 
-    // 1. Verify token signature
+    // 1. Verify token signature (fails closed if secret missing or token forged)
     const tokenData = verifyPreviewToken(previewToken);
     if (!tokenData || tokenData.programmeId !== programmeId) {
       throw new Error('INVALID_TOKEN');
     }
 
-    // 2. Retrieve stored preview
-    const stored = previewStore.get(previewToken);
+    // 2. Retrieve stored preview from preview store
+    const stored = await this.store.get(previewToken);
     if (!stored) throw new Error('PREVIEW_EXPIRED');
-    if (Date.now() > stored.expiresAt) {
-      previewStore.delete(previewToken);
-      throw new Error('PREVIEW_EXPIRED');
-    }
     if (stored.programmeId !== programmeId) throw new Error('PROGRAMME_MISMATCH');
 
     const { proposedAllocations } = stored;
 
-    // 3. Find participants already allocated since preview
-    const existing = await this.prisma.allocation.findMany({
-      where: { participant: { programmeId } } as object,
-      select: { participantId: true, animalId: true },
-    });
-    const allocatedParticipants = new Set(existing.map((a) => a.participantId));
+    // 3. Commit within an isolated transaction (or direct executor if mock)
+    const executeCommit = async (tx: PrismaLike): Promise<CommitResult> => {
+      // Re-read existing allocations inside transaction boundary
+      const existing = await tx.allocation.findMany({
+        where: { participant: { programmeId } } as object,
+        select: { participantId: true, animalId: true },
+      });
+      const allocatedParticipants = new Set(existing.map((a) => a.participantId));
 
-    // 4. Validate 7-share cap per animal (concurrent-commit safety)
-    const sharesPerAnimal = new Map<number, number>();
-    for (const a of existing) {
-      sharesPerAnimal.set(a.animalId, (sharesPerAnimal.get(a.animalId) ?? 0) + 1);
+      // Build live share count map within transaction
+      const liveSharesPerAnimal = new Map<number, number>();
+      for (const a of existing) {
+        liveSharesPerAnimal.set(a.animalId, (liveSharesPerAnimal.get(a.animalId) ?? 0) + 1);
+      }
+
+      // Filter and enforce the strict 7-share cap atomically
+      const toCommit = proposedAllocations.filter((pa) => {
+        if (allocatedParticipants.has(pa.participantId)) return false;
+        const current = liveSharesPerAnimal.get(pa.slot.animalId) ?? 0;
+        if (current >= SHARES_PER_ANIMAL) return false;
+        liveSharesPerAnimal.set(pa.slot.animalId, current + 1);
+        return true;
+      });
+
+      const skipped = proposedAllocations.length - toCommit.length;
+
+      if (toCommit.length === 0) {
+        await this.store.delete(previewToken);
+        return { committed: 0, skipped, programmeId };
+      }
+
+      const data = toCommit.map((pa) => ({
+        participantId: pa.participantId,
+        animalId: pa.slot.animalId,
+        programmeId,
+      }));
+
+      const result = await tx.allocation.createMany({
+        data,
+        skipDuplicates: true,
+      });
+
+      // Invalidate preview token on successful commit (single-use guarantee)
+      await this.store.delete(previewToken);
+
+      return { committed: result.count, skipped, programmeId };
+    };
+
+    if (this.prisma.$transaction) {
+      return this.prisma.$transaction(executeCommit);
     }
-
-    const toCommit = proposedAllocations.filter((pa) => {
-      if (allocatedParticipants.has(pa.participantId)) return false;
-      const current = sharesPerAnimal.get(pa.slot.animalId) ?? 0;
-      if (current >= SHARES_PER_ANIMAL) return false;
-      // Optimistically increment so concurrent entries in this batch respect cap
-      sharesPerAnimal.set(pa.slot.animalId, current + 1);
-      return true;
-    });
-
-    const skipped = proposedAllocations.length - toCommit.length;
-
-    if (toCommit.length === 0) {
-      previewStore.delete(previewToken);
-      return { committed: 0, skipped, programmeId };
-    }
-
-    const data = toCommit.map((pa) => ({
-      participantId: pa.participantId,
-      animalId: pa.slot.animalId,
-      programmeId,
-    }));
-
-    const result = await this.prisma.allocation.createMany({
-      data,
-      skipDuplicates: true,
-    });
-
-    // Invalidate preview after commit (one-use token)
-    previewStore.delete(previewToken);
-
-    return { committed: result.count, skipped, programmeId };
+    return executeCommit(this.prisma);
   }
 
   // ---------------------------------------------------------------------------

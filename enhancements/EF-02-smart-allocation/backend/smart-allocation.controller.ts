@@ -4,8 +4,8 @@
  * Returns 403 when FEATURE_EF_02 is not 'on'.
  *
  * Auth Contract:
- * Requires authenticated Admin role. Uses M2's JwtAuthGuard / AdminRoleGuard.
- * When mounted by M2 in backend/, M2's extension loader injects the real guards.
+ * Requires verified identity and explicit Admin privileges.
+ * Fails closed: if user identity is absent or unverified, request is rejected.
  */
 
 import {
@@ -19,6 +19,7 @@ import {
   ExecutionContext,
   Injectable,
   UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -28,22 +29,26 @@ import {
 } from './smart-allocation.service';
 
 /**
- * Extension Admin Guard for EF-02.
- * Enforces Authorization header presence and admin role claims.
- * M2's extension mount replaces/overrides this with backend/auth/jwt-auth.guard.ts.
+ * Strict Admin Guard for EF-02.
+ * Fails closed: Requires upstream verification (req.user attached by M2's JwtAuthGuard)
+ * AND verifies explicit admin role claim.
  */
 @Injectable()
 export class ExtensionAdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest();
-    const authHeader = req.headers['authorization'] || req.headers['Authorization'];
-    if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Missing or invalid Authorization bearer token');
+    
+    // 1. Verify that upstream M2 JwtAuthGuard ran and authenticated user identity
+    if (!req.user) {
+      throw new UnauthorizedException(
+        'Authentication required: Missing authenticated user context. Ensure M2 JwtAuthGuard is loaded upstream.'
+      );
     }
 
-    // If request user was already attached by upstream M2 auth middleware, verify admin role
-    if (req.user && req.user.role && req.user.role !== 'ADMIN' && req.user.role !== 'admin') {
-      throw new UnauthorizedException('Admin privileges required for smart allocation');
+    // 2. Enforce explicit Admin role
+    const role = req.user.role ? String(req.user.role).toUpperCase() : '';
+    if (role !== 'ADMIN') {
+      throw new ForbiddenException('Admin role required for smart allocation operations.');
     }
 
     return true;
@@ -85,9 +90,10 @@ export class SmartAllocationController {
       const result = await this.service.optimize(body);
       return res.json(result);
     } catch (err: any) {
-      return res
-        .status(HttpStatus.INTERNAL_SERVER_ERROR)
-        .json({ error: err.message || 'Optimization failed' });
+      const status = err.message?.startsWith('CONFIG_ERROR')
+        ? HttpStatus.INTERNAL_SERVER_ERROR
+        : HttpStatus.BAD_REQUEST;
+      return res.status(status).json({ error: err.message || 'Optimization failed' });
     }
   }
 
@@ -127,10 +133,16 @@ export class SmartAllocationController {
           .status(HttpStatus.GONE)
           .json({ error: 'Preview has expired. Please run optimization again.' });
       }
+      if (err.message?.startsWith('CONFIG_ERROR')) {
+        return res
+          .status(HttpStatus.INTERNAL_SERVER_ERROR)
+          .json({ error: err.message });
+      }
       return res
         .status(HttpStatus.INTERNAL_SERVER_ERROR)
         .json({ error: err.message || 'Commit failed' });
     }
   }
 }
+
 

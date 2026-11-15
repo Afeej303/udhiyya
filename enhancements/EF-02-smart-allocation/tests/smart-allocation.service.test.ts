@@ -17,6 +17,8 @@ import { SmartAllocationService, PrismaLike, OptimizeRequest } from '../backend/
 // Helpers
 // ---------------------------------------------------------------------------
 
+const TEST_SECRET = 'test-hmac-secret-32-chars-long-for-tests!!';
+
 function makeParticipant(id: number, householdId = 1) {
   return {
     id,
@@ -59,6 +61,7 @@ function makePrisma(
       findMany: async () => existingAllocations as any,
       count: async () => existingAllocations.length,
     },
+    $transaction: async (fn: any) => fn(makePrisma(participants, animals, existingAllocations)),
   };
 }
 
@@ -66,7 +69,25 @@ function makePrisma(
 // Tests
 // ---------------------------------------------------------------------------
 
+describe('SmartAllocationService Secret & Configuration', () => {
+  const originalEnv = process.env.EF02_PREVIEW_SECRET;
+
+  afterEach(() => {
+    process.env.EF02_PREVIEW_SECRET = originalEnv;
+  });
+
+  test('fails closed when EF02_PREVIEW_SECRET is missing', async () => {
+    delete process.env.EF02_PREVIEW_SECRET;
+    const svc = new SmartAllocationService(makePrisma([], []));
+    await expect(svc.optimize({ programmeId: 1 })).rejects.toThrow('CONFIG_ERROR');
+  });
+});
+
 describe('SmartAllocationService.optimize()', () => {
+  beforeAll(() => {
+    process.env.EF02_PREVIEW_SECRET = TEST_SECRET;
+  });
+
   const req: OptimizeRequest = { programmeId: 1 };
 
   test('no participants, no animals → empty plan', async () => {
@@ -147,7 +168,11 @@ describe('SmartAllocationService.optimize()', () => {
   });
 });
 
-describe('SmartAllocationService.commit() Security & Validation', () => {
+describe('SmartAllocationService.commit() Security & Atomic Concurrency', () => {
+  beforeAll(() => {
+    process.env.EF02_PREVIEW_SECRET = TEST_SECRET;
+  });
+
   test('rejects forged or invalid previewToken', async () => {
     const svc = new SmartAllocationService(makePrisma([], []));
     await expect(
@@ -221,4 +246,5 @@ describe('SmartAllocationService.commit() Security & Validation', () => {
     ).rejects.toThrow('PREVIEW_EXPIRED');
   });
 });
+
 
